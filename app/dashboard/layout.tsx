@@ -1,4 +1,5 @@
 import type { CSSProperties, ReactNode } from "react";
+import { auth } from "@clerk/nextjs/server";
 import { AppSidebar } from "@/components/dashboard/app-sidebar";
 import {
   SidebarInset,
@@ -6,7 +7,8 @@ import {
   SidebarTrigger,
 } from "@/components/ui/sidebar";
 
-export default function DashboardLayout({ children }: { children: ReactNode }) {
+export default async function DashboardLayout({ children }: { children: ReactNode }) {
+  await auth.protect({ unauthenticatedUrl: "/sign-in" });
   return (
     <SidebarProvider
       style={{ "--sidebar-width": "18rem" } as CSSProperties}
