@@ -2,7 +2,7 @@
 
 > Keep this file **short**. Append only what changed. See `AGENTS.md` for update rules.
 
-**Updated:** 2026-09-05
+**Updated:** 2026-09-24
 
 ## Stack
 Next.js 16 (App Router) · React 19 · Tailwind v4 · shadcn + Neobrutalism · Clerk · Neon/Drizzle · private Cloudflare R2 · Brevo · Web Crypto/libsodium/IndexedDB/Workers
@@ -11,7 +11,7 @@ Next.js 16 (App Router) · React 19 · Tailwind v4 · shadcn + Neobrutalism · C
 - **UI:** Neobrutalism theme in `app/globals.css` (cream/yellow, thick borders, hard shadows, `0.75rem` root radius). Buttons and navigation controls stay rounded; sidebar toggles use a yellow, hard-shadowed hamburger control. 54 shadcn/ui components in `components/ui/`. Fonts: Archivo Black (head), Space Grotesk (body).
 - **Landing (`/`):** Full-viewport hero — video bg (`public/video/EchoLeaks-Hero-Section-Video.mp4`), tap-to-unmute, hollow **EchoLeaks** title, tagline + **Protect a File** CTA. **Public — no auth required.**
 - **Navbar:** Logo left; right = Sign In + Get Started (signed out) or Clerk `UserButton` (signed in).
-- **Auth (Clerk):** App **EchoLeaks** (`app_3IZiLv1U2DObIiJ3eMCR6GQxiOc`). Keys in `.env.local` (gitignored). `proxy.ts` = public-first; only `/dashboard(.*)` protected. On landing, Sign In / Get Started open **Clerk modal** over hero (blur backdrop; click backdrop or × to close). `/sign-in`, `/sign-up` = full-page fallback routes.
+- **Auth (Clerk):** App **EchoLeaks** (`app_3IZiLv1U2DObIiJ3eMCR6GQxiOc`). Keys in `.env.local` (gitignored). `proxy.ts` public-first; only `/dashboard(.*)` is `auth.protect()`. Dashboard layout also calls `auth.protect({ unauthenticatedUrl: "/sign-in" })`. Landing Sign In / Get Started use a **Clerk modal**. `/sign-in` and `/sign-up` server-redirect to `/dashboard` if already signed in so `<SignIn/>` never remounts. `ClerkProvider` fallback after auth is `/dashboard`. Local JWT-expired / refresh-loop errors were from the machine clock being ~5.5h ahead (RTC stored in IST); NTP fix + restart cleared it.
 - **Dashboard:** Protected shared Neobrutalist shell with collapsible sidebar, masked email, Clerk profile, and rounded controls. History now manages owned encrypted groups; Dashboard and Scan remain **Coming soon** placeholders.
 - **Protected sharing:** `/dashboard/upload` stages/reorders up to 10 files (25 MiB each, 100 MiB/group), then sequentially encrypts each with AES-256-GCM in a Worker. Groups support per-file progress, retry, discard-failed continuation, and owner deletion. Key recovery uses Argon2id, encrypted backup in Neon, and a non-extractable private key in IndexedDB.
 - **Recipients:** Manual or local CSV/TXT/XLSX import (100 max), live Clerk verified-email lookup, per-file browser-wrapped keys, optional group opening/expiry, a post-creation copy/email dialog, and Brevo batch email. `/share/[shareId]` authorizes identity before returning an encrypted manifest and issues one five-minute R2 URL only when a file is selected.
