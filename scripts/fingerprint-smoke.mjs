@@ -1,4 +1,5 @@
 // Local developer smoke test, not the held-out qualification or a human review.
+import { createHash } from "node:crypto";
 import { build } from "esbuild";
 import { chromium } from "@playwright/test";
 import { createServer } from "node:http";
@@ -50,7 +51,8 @@ let browser;
 const browserArgs = process.env.FINGERPRINT_VULKAN === "1"
   ? ["--enable-unsafe-webgpu", "--enable-features=Vulkan", "--use-angle=vulkan", "--disable-vulkan-surface"]
   : ["--enable-unsafe-webgpu"];
-const report = { strength, browserArgs, kind: "tuning-smoke-only", qualified: false, runtime: null, cases: [], error: null };
+const manifest = JSON.parse(await readFile(path.join(root,"lib/fingerprint/trustmark/manifest.json"),"utf8"));
+const report = { profile:manifest, strength, browserArgs, kind: "tuning-smoke-only", qualified: false, runtime: null, cases: [], error: null };
 try {
   browser = await chromium.launch({ channel: "chrome", headless: process.env.FINGERPRINT_HEADED !== "1", args: browserArgs });
   const page = await browser.newPage({ viewport: { width: 1400, height: 1400 } });
@@ -60,21 +62,48 @@ try {
     return { browser: navigator.userAgent, adapter: adapter ? { vendor: adapter.info.vendor, architecture: adapter.info.architecture, device: adapter.info.device, description: adapter.info.description } : null,
       shaderF16: adapter?.features.has("shader-f16") ?? false };
   });
+  report.runtime.build = browser.version();
+  report.runtime.display = await page.evaluate(()=>({dpr:devicePixelRatio,viewport:[innerWidth,innerHeight]}));
   console.log("Runtime:", JSON.stringify(report.runtime));
   const clean = await page.evaluate(() => { const p=window.fixture();const c=document.createElement("canvas");c.width=p.width;c.height=p.height;c.getContext("2d").putImageData(p,0,0);return c.toDataURL("image/png").split(",")[1]; });
   await writeFile(path.join(output,"unmarked-fixture.png"),Buffer.from(clean,"base64"));
-  const encodeStart=performance.now();
-  await page.evaluate(async (strength) => {
-    const source=window.fixture();
-    const result=await window.exchange({operation:'encode',pixels:source,identifier:new Uint8Array([1,35,69,103,137]),strength});
-    const c=document.querySelector('#marked');c.width=result.value.width;c.height=result.value.height;
-    c.getContext('2d').putImageData(new ImageData(result.value.data,c.width,c.height),0,0);
-  }, strength);
-  report.encodeMs=performance.now()-encodeStart;
+  if(process.env.FINGERPRINT_REFERENCE_PNG) {
+    const encoded=(await readFile(process.env.FINGERPRINT_REFERENCE_PNG)).toString("base64");
+    const result=await page.evaluate(async (encoded)=>{
+      const b=await createImageBitmap(await (await fetch('data:image/png;base64,'+encoded)).blob());
+      const c=document.createElement('canvas');c.width=b.width;c.height=b.height;const x=c.getContext('2d');x.drawImage(b,0,0);b.close();
+      const r=(await window.exchange({operation:'decode',pixels:x.getImageData(0,0,c.width,c.height)})).value;
+      return {status:r.status,identifier:r.identifier?Array.from(r.identifier,x=>x.toString(16).padStart(2,'0')).join(''):null};
+    },encoded);
+    report.cases.push({name:"upstream-png",...result,correct:result.identifier==="0123456789"});
+    console.log("upstream-png",JSON.stringify(result));
+    if(!report.cases.at(-1).correct) throw new Error("Upstream PNG decode failed");
+  }
+  report.encodeMs = [];
+  for(let repeat=0;repeat<3;repeat++) {
+    const encodeStart=performance.now();
+    await page.evaluate(async (strength) => {
+      const source=window.fixture();
+      const result=await window.exchange({operation:'encode',pixels:source,identifier:new Uint8Array([1,35,69,103,137]),strength});
+      window.exactMarked=result.value;
+      const c=document.querySelector('#marked');c.width=result.value.width;c.height=result.value.height;
+      c.getContext('2d').putImageData(new ImageData(result.value.data,c.width,c.height),0,0);
+    }, strength);
+    report.encodeMs.push(performance.now()-encodeStart);
+    const direct = await page.evaluate(async () => {
+      const r=(await window.exchange({operation:'decode',pixels:window.exactMarked})).value;
+      return {status:r.status,identifier:r.identifier?Array.from(r.identifier,x=>x.toString(16).padStart(2,'0')).join(''):null};
+    });
+    report.cases.push({name:`exact-memory-${repeat+1}`,...direct,correct:direct.identifier==="0123456789"});
+    console.log("exact-memory",JSON.stringify(direct));
+    if (!report.cases.at(-1).correct) throw new Error("Exact-memory gate failed; PNG and screenshot stages NOT RUN");
+  }
   const markedData = await page.evaluate(() => document.querySelector("#marked").toDataURL("image/png").split(",")[1]);
   await writeFile(path.join(output,"marked-pixels.png"),Buffer.from(markedData,"base64"));
-  const screenshot = await page.locator("#marked").screenshot({ path: path.join(output, "marked-screenshot.png") });
-  for (const [name, scale, jpeg] of [["native",1,false],["resize75",0.75,false],["resize50",0.5,false],["jpeg85",1,true],["resize50-jpeg85",0.5,true]]) {
+  report.pngSha256=createHash("sha256").update(Buffer.from(markedData,"base64")).digest("hex");
+  let screenshot;
+  for (const [name, scale, jpeg] of [["png-export",1,false],["native",1,false],["resize75",0.75,false],["resize50",0.5,false],["jpeg85",1,true],["resize50-jpeg85",0.5,true]]) {
+    if(name === "native") screenshot = await page.locator("#marked").screenshot({path:path.join(output,"marked-screenshot.png")});
     const result = await page.evaluate(async ({ encoded, scale, jpeg }) => {
       const blob=await (await fetch('data:image/png;base64,'+encoded)).blob();
       const bitmap=await createImageBitmap(blob);
@@ -83,15 +112,17 @@ try {
       if(jpeg){const compressed=await new Promise(resolve=>c.toBlob(resolve,'image/jpeg',0.85));if(compressed.type!=='image/jpeg')throw Error('JPEG encoder unavailable');const b=await createImageBitmap(compressed);x.drawImage(b,0,0);b.close();}
       const start=performance.now();const result=await window.exchange({operation:'decode',pixels:x.getImageData(0,0,c.width,c.height)});
       return { width:c.width,height:c.height,ms:performance.now()-start,status:result.value.status,identifier:result.value.identifier?Array.from(result.value.identifier,x=>x.toString(16).padStart(2,'0')).join(''):null,correctedBits:result.value.correctedBits??null };
-    }, { encoded: screenshot.toString("base64"), scale, jpeg });
+    }, { encoded: name === "png-export" ? markedData : screenshot.toString("base64"), scale, jpeg });
     report.cases.push({ name, ...result, correct: result.identifier === "0123456789" });
     console.log(name, JSON.stringify(result));
+    if(name === "png-export" && result.identifier !== "0123456789") throw new Error("PNG gate failed; screenshot stages NOT RUN");
   }
+  report.screenshotSha256=createHash("sha256").update(screenshot).digest("hex");
   const negative = await page.evaluate(async () => {
     const result=await window.exchange({operation:'decode',pixels:window.fixture()});
     return { status:result.value.status, identifier:result.value.identifier?Array.from(result.value.identifier,x=>x.toString(16).padStart(2,'0')).join(''):null };
   });
-  report.cases.push({ name: "unmarked", ...negative, correct: negative.identifier !== "0123456789" });
+  report.cases.push({ name: "unmarked", ...negative, correct: negative.status === "NO_RELIABLE_MARK" && negative.identifier === null });
   await page.evaluate(() => window.exchange({ operation: "dispose" }));
 } catch (error) {
   report.error = error.message;

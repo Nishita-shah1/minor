@@ -1,0 +1,43 @@
+{
+  "kind": "public-fixture-interoperability-only",
+  "qualified": false,
+  "identifier": "0123456789",
+  "sourceSha256": "1016f4f6f842743b2d5710c52ef38441ec3dd6b4658aae5bc05e27b17406c288",
+  "packages": {
+    "torch": "2.14.0+cpu",
+    "torchvision": "0.29.0+cpu",
+    "trustmark": "0.9.2",
+    "Pillow": "12.3.0"
+  },
+  "models": {
+    "decoder_Q.ckpt": "e3d9cea5406a26590735719f8f15cb10802b11852ae69047eaf4cf17214df781",
+    "encoder_Q.ckpt": "dc382c3f6b4fd568b27d6fbb763d6ffc2d2587126d84afe9d5ee95b4c5d99826",
+    "trustmark_Q.yaml": "43f37103f92efa8bd6b1c5902bb537cc12a981dc699fca19d9bb7de8c62d03d9"
+  },
+  "cases": [
+    {
+      "file": "upstream.png",
+      "sha256": "9137236129b4c75bf4c9c3d3bc4a3d5052c5417e6321e354936d37873215d870",
+      "detected": true,
+      "schema": 0,
+      "bits": "0000000100100011010001010110011110001001",
+      "correct": true
+    },
+    {
+      "file": "marked-pixels.png",
+      "sha256": "881ab46dd9ecdd8f87687bfc12cec01d54f9eb184fcdbdefaaa7b49e18ec678b",
+      "detected": true,
+      "schema": 0,
+      "bits": "0000000100100011010001010110011110001001",
+      "correct": true
+    },
+    {
+      "file": "marked-screenshot.png",
+      "sha256": "421cf95da581d526df1a9ca22a3cab89474c92e202ff52df57aab06a1b1e7cec",
+      "detected": true,
+      "schema": 0,
+      "bits": "0000000100100011010001010110011110001001",
+      "correct": true
+    }
+  ]
+}

@@ -1,0 +1,157 @@
+{
+  "profile": {
+    "profileId": "trustmark-q-lab-v2",
+    "qualified": false,
+    "upstreamCommit": "2ecb73ad28d1a3f66ac9dc19e1b667711f14314f",
+    "onnxRuntimeVersion": "1.30.0",
+    "ecc": "BCH_SUPER",
+    "preprocessing": "rgb-white-alpha-half-pixel-bilinear-nchw-minus1-plus1-v1",
+    "compositor": "rust-style-residual-clamp-0.2-bilinear-round-uint8-v1",
+    "modelBaseUrl": "https://cai-watermark.adobe.net/watermarking/trustmark-models/",
+    "models": {
+      "encoder": {
+        "file": "encoder_Q_split3.onnx",
+        "bytes": 17316259,
+        "sha256": "449c3acb61972d57fbc0deda5351b1ed7fd8957dc1714391502941719e6401e9",
+        "source": {
+          "file": "encoder_Q.onnx",
+          "bytes": 17312208,
+          "sha256": "19b3d1b25836130ffd78775a8f61539f993375d1823ef0e59ba5b8dffb4f892d"
+        },
+        "derivation": "split-first-convolution-3-plus-3-v1"
+      },
+      "decoder": {
+        "file": "decoder_Q.onnx",
+        "bytes": 47401222,
+        "sha256": "ee3268f057c9dabef680e169302f5973d0589feea86189ed229a896cc3aa88df"
+      }
+    }
+  },
+  "strength": 1,
+  "browserArgs": [
+    "--enable-unsafe-webgpu",
+    "--enable-features=Vulkan",
+    "--use-angle=vulkan",
+    "--disable-vulkan-surface"
+  ],
+  "kind": "tuning-smoke-only",
+  "qualified": false,
+  "runtime": {
+    "browser": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Safari/537.36",
+    "adapter": {
+      "vendor": "amd",
+      "architecture": "rdna-3",
+      "device": "",
+      "description": ""
+    },
+    "shaderF16": true,
+    "build": "154.0.8037.57",
+    "display": {
+      "dpr": 1.0000000009313226,
+      "viewport": [
+        1400,
+        1400
+      ]
+    }
+  },
+  "cases": [
+    {
+      "name": "upstream-png",
+      "status": "VALID_IDENTIFIER",
+      "identifier": "0123456789",
+      "correct": true
+    },
+    {
+      "name": "exact-memory-1",
+      "status": "VALID_IDENTIFIER",
+      "identifier": "0123456789",
+      "correct": true
+    },
+    {
+      "name": "exact-memory-2",
+      "status": "VALID_IDENTIFIER",
+      "identifier": "0123456789",
+      "correct": true
+    },
+    {
+      "name": "exact-memory-3",
+      "status": "VALID_IDENTIFIER",
+      "identifier": "0123456789",
+      "correct": true
+    },
+    {
+      "name": "png-export",
+      "width": 768,
+      "height": 1024,
+      "ms": 37.20000000111759,
+      "status": "VALID_IDENTIFIER",
+      "identifier": "0123456789",
+      "correctedBits": 0,
+      "correct": true
+    },
+    {
+      "name": "native",
+      "width": 768,
+      "height": 1024,
+      "ms": 30.800000000745058,
+      "status": "VALID_IDENTIFIER",
+      "identifier": "0123456789",
+      "correctedBits": 0,
+      "correct": true
+    },
+    {
+      "name": "resize75",
+      "width": 576,
+      "height": 768,
+      "ms": 30.09999999962747,
+      "status": "VALID_IDENTIFIER",
+      "identifier": "0123456789",
+      "correctedBits": 0,
+      "correct": true
+    },
+    {
+      "name": "resize50",
+      "width": 384,
+      "height": 512,
+      "ms": 40.30000000074506,
+      "status": "VALID_IDENTIFIER",
+      "identifier": "0123456789",
+      "correctedBits": 0,
+      "correct": true
+    },
+    {
+      "name": "jpeg85",
+      "width": 768,
+      "height": 1024,
+      "ms": 30,
+      "status": "VALID_IDENTIFIER",
+      "identifier": "0123456789",
+      "correctedBits": 0,
+      "correct": true
+    },
+    {
+      "name": "resize50-jpeg85",
+      "width": 384,
+      "height": 512,
+      "ms": 26.09999999962747,
+      "status": "VALID_IDENTIFIER",
+      "identifier": "0123456789",
+      "correctedBits": 1,
+      "correct": true
+    },
+    {
+      "name": "unmarked",
+      "status": "NO_RELIABLE_MARK",
+      "identifier": null,
+      "correct": true
+    }
+  ],
+  "error": null,
+  "encodeMs": [
+    404.15792199999987,
+    181.4502150000003,
+    167.27869099999998
+  ],
+  "pngSha256": "881ab46dd9ecdd8f87687bfc12cec01d54f9eb184fcdbdefaaa7b49e18ec678b",
+  "screenshotSha256": "421cf95da581d526df1a9ca22a3cab89474c92e202ff52df57aab06a1b1e7cec"
+}
