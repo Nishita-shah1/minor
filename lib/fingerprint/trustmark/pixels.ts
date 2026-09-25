@@ -1,12 +1,14 @@
 import type { Pixels } from "../types";
 
 export const MODEL_SIDE = 256;
+export const MAX_MARKED_SIDE = 4096;
+export const MAX_MARKED_PIXELS = 4_194_304;
 const PLANE = MODEL_SIDE * MODEL_SIDE;
 
 export function validatePixels(pixels: Pixels): void {
   const { width, height, data } = pixels;
-  if (!Number.isInteger(width) || !Number.isInteger(height) || width < 32 || height < 32 || width > 4096 || height > 4096 || width * height > 4_194_304 || data.length !== width * height * 4) {
-    throw new Error("Unsupported pixel dimensions (32–4096 per side, at most 4 megapixels)");
+  if (!Number.isInteger(width) || !Number.isInteger(height) || width < 32 || height < 32 || width > MAX_MARKED_SIDE || height > MAX_MARKED_SIDE || width * height > MAX_MARKED_PIXELS || data.length !== width * height * 4) {
+    throw new Error("The marked page exceeds the browser's safe working surface.");
   }
   if (width / height < 0.5 || width / height > 2) {
     throw new Error("This experimental profile supports aspect ratios from 1:2 to 2:1; center-only marking is disabled");

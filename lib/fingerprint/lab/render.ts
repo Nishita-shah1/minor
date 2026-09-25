@@ -1,6 +1,8 @@
 import { openPdfDocument } from "../pdf-document";
 import type { Pixels } from "../types";
 import { validatePixels } from "../trustmark/pixels";
+import { evidenceSurface, imageSurface } from "./image-surface";
+import { validateImageSize } from "./image-size";
 
 function surface(width: number, height: number) {
   const canvas = document.createElement("canvas");
@@ -23,17 +25,15 @@ export async function renderLocalFile(file: File, options: { evidence?: boolean;
     } finally { await pdf.dispose(); }
   }
   if (!["image/png", "image/jpeg"].includes(file.type)) throw new Error("This lab accepts PDF, PNG, and JPEG fixtures only");
+  await validateImageSize(file);
   const bitmap = await createImageBitmap(file, { imageOrientation: "from-image" });
   try {
-    const oversized = bitmap.width > 4096 || bitmap.height > 4096 || bitmap.width * bitmap.height > 4_194_304;
-    if (oversized && !options.evidence) throw new Error("Original images must be at most 4 megapixels and 4096 pixels per side.");
-    const scale = oversized ? Math.min(4096 / bitmap.width, 4096 / bitmap.height, Math.sqrt(4_194_304 / (bitmap.width * bitmap.height))) : 1;
-    const width = Math.max(1, Math.floor(bitmap.width * scale)), height = Math.max(1, Math.floor(bitmap.height * scale));
-    if (oversized) options.onResize?.(`${bitmap.width} × ${bitmap.height}`, `${width} × ${height}`);
-    const { canvas, context } = surface(width, height);
+    const fit = options.evidence ? evidenceSurface(bitmap.width, bitmap.height) : imageSurface(bitmap.width, bitmap.height);
+    if (fit.fitted) options.onResize?.(`${bitmap.width} × ${bitmap.height}`, `${fit.width} × ${fit.height}`);
+    const { canvas, context } = surface(fit.width, fit.height);
     context.imageSmoothingEnabled = true; context.imageSmoothingQuality = "high";
     try {
-      context.drawImage(bitmap, 0, 0, width, height);
+      context.drawImage(bitmap, fit.imageX, fit.imageY, fit.imageWidth, fit.imageHeight);
       const pixels = context.getImageData(0, 0, canvas.width, canvas.height);
       // Evidence crops may be narrower than model input; alignment reconstructs
       // them before inference. Keep strict dimensions for original/encoding input.

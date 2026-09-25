@@ -95,7 +95,16 @@ export function FingerprintLab() {
             const file = event.target.files?.[0]; event.target.value = "";
             if (!file) return;
             clearOutput(); source.current = null; setLoaded(false);
-            void run(async (current) => { const pixels = await renderLocalFile(file); if (current()) { source.current = pixels; setLoaded(true); setStatus("Fixture loaded privately. Encode to display marked pixels."); } });
+            void run(async (current) => {
+              let fitted = "";
+              const pixels = await renderLocalFile(file, {
+                onResize: (from, to) => { fitted = ` Image fitted locally from ${from} to ${to}; recovery at this size is unqualified.`; },
+              });
+              if (!current()) return;
+              source.current = pixels;
+              setLoaded(true);
+              setStatus(`Fixture loaded privately. Encode to display marked pixels.${fitted}`);
+            });
           }} />
         </label>
       </div>

@@ -25,6 +25,7 @@ export function ScanWorkspace() {
   const [page, setPage] = useState(1);
   const [pageCount, setPageCount] = useState(1);
   const [resizeNotice, setResizeNotice] = useState("");
+  const [originalNotice, setOriginalNotice] = useState("");
   const [original, setOriginal] = useState<Pixels | null>(null);
   const [evidence, setEvidence] = useState<Pixels | null>(null);
   const [marked, setMarked] = useState<Pixels | null>(null);
@@ -61,7 +62,7 @@ export function ScanWorkspace() {
   }
   function reset() {
     generation.current++; engine.current?.cancel(); setSelectArea(false); setAreaPoints([]);
-    originalFile.current = null; setPage(1); setPageCount(1); setResizeNotice("");
+    originalFile.current = null; setPage(1); setPageCount(1); setResizeNotice(""); setOriginalNotice("");
     setOriginal(null); setEvidence(null); setMarked(null); setTestId(""); setAligned(false);
     setOriginalPoints([]); setEvidencePoints([]); clearResult(); setBusy(false); setResetKey(k => k + 1);
     setMessage("Cleared local images and stopped the worker.");
@@ -71,14 +72,14 @@ export function ScanWorkspace() {
     setAligned(false); setSelectArea(false); setAreaPoints([]);
     if (target === "evidence") setResizeNotice("");
     if (target === "evidence") { setEvidence(null); setEvidencePoints([]); }
-    else { setOriginal(null); setOriginalPoints([]); setMarked(null); if (file !== originalFile.current) setTestId(""); }
+    else { setOriginal(null); setOriginalPoints([]); setMarked(null); setOriginalNotice(""); if (file !== originalFile.current) setTestId(""); }
     await run(async current => {
       setMessage("Reading your file locally…");
       let count = 1, resized = "";
       const pixels = await renderLocalFile(file, { evidence: target === "evidence", page: pageNumber,
-        onPageCount: value => { count = value; }, onResize: (from, to) => { resized = `Resized locally from ${from} to ${to} for analysis. Recovery after resizing is not guaranteed.`; } });
+        onPageCount: value => { count = value; }, onResize: (from, to) => { resized = `${target === "original" ? "Original fitted" : "Screenshot resized"} locally from ${from} to ${to}. Recovery at this size is not qualified.`; } });
       if (!current()) return;
-      if (target === "original") { originalFile.current = file; setPage(pageNumber); setPageCount(count); setOriginal(pixels); } else { setEvidence(pixels); setResizeNotice(resized); }
+      if (target === "original") { originalFile.current = file; setPage(pageNumber); setPageCount(count); setOriginal(pixels); setOriginalNotice(resized); } else { setEvidence(pixels); setResizeNotice(resized); }
       setMessage(target === "original" ? `Original page ${pageNumber} of ${count} loaded locally.` : "Screenshot ready. Analyze to check for a compatible fingerprint.");
     });
   }
@@ -187,6 +188,7 @@ export function ScanWorkspace() {
       <label className="block space-y-2 font-bold">Local original (PDF, PNG or JPEG)
         <input key={`o-${resetKey}`} aria-label="Original document" className={field} type="file" accept="application/pdf,image/png,image/jpeg" disabled={busy} onChange={e => { const file = e.target.files?.[0]; e.target.value = ""; if (file) void load(file, "original"); }} />
       </label>
+      {originalNotice && <p role="note" className="text-sm text-muted-foreground">{originalNotice}</p>}
       {pageCount > 1 && <div className="flex items-center gap-3">
         <button className={button} disabled={busy || page <= 1} onClick={() => originalFile.current && void load(originalFile.current, "original", page - 1)}>Previous page</button>
         <span>Page {page} of {pageCount}</span>

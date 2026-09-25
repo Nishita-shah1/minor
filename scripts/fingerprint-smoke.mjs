@@ -14,6 +14,10 @@ const output = path.join(root, "test-results/fingerprint-smoke", `strength-${str
 await mkdir(output, { recursive: true });
 await build({ entryPoints: [path.join(root, "workers/fingerprint.worker.ts")], outfile: path.join(output, "worker.js"),
   bundle: true, format: "esm", platform: "browser", target: "es2022", alias: { "@": root } });
+if (process.env.FINGERPRINT_LARGE_IMAGE === "1") {
+  await build({ entryPoints: [path.join(root, "lib/fingerprint/lab/render.ts")], outfile: path.join(output, "render.js"),
+    bundle: true, format: "esm", platform: "browser", target: "es2022", alias: { "@": root } });
+}
 const html = `<!doctype html><meta charset="utf-8"><title>Public TrustMark smoke fixture</title><canvas id="marked"></canvas><script>
 const worker = new Worker('/worker.js', {type:'module'});
 const waiting = new Map();
@@ -38,6 +42,7 @@ const server = createServer(async (request, response) => {
     if (url.pathname === "/") { response.setHeader("Content-Type", "text/html"); response.end(html); return; }
     let file;
     if (url.pathname === "/worker.js") file = path.join(output, "worker.js");
+    else if (url.pathname === "/render.js" && process.env.FINGERPRINT_LARGE_IMAGE === "1") file = path.join(output, "render.js");
     else if (url.pathname.startsWith("/fingerprint-assets/")) {
       file = path.resolve(root, "public", `.${url.pathname}`);
       if (!file.startsWith(path.join(root, "public/fingerprint-assets") + path.sep)) throw new Error("Invalid path");
@@ -123,6 +128,55 @@ try {
     return { status:result.value.status, identifier:result.value.identifier?Array.from(result.value.identifier,x=>x.toString(16).padStart(2,'0')).join(''):null };
   });
   report.cases.push({ name: "unmarked", ...negative, correct: negative.status === "NO_RELIABLE_MARK" && negative.identifier === null });
+  if (process.env.FINGERPRINT_LARGE_IMAGE === "1") {
+    for (const [width, height] of [[6000, 4000], [12000, 2000]]) {
+      const result = await page.evaluate(async ({ width, height, strength }) => {
+        const { renderLocalFile } = await import("/render.js");
+        const source = document.createElement("canvas");
+        source.width = width; source.height = height;
+        const context = source.getContext("2d");
+        context.fillStyle = "white"; context.fillRect(0, 0, width, height);
+        context.fillStyle = "#222"; context.font = `${Math.max(60, height / 25)}px sans-serif`;
+        context.fillText("PUBLIC LARGE IMAGE FIXTURE", width / 12, height / 3);
+        context.fillStyle = "#b7d8da"; context.fillRect(width / 12, height * 0.7, width * 0.8, height * 0.05);
+        const blob = await new Promise(resolve => source.toBlob(resolve, "image/png"));
+        source.width = source.height = 0;
+        const notices = [];
+        const pixels = await renderLocalFile(new File([blob], "large.png", { type: "image/png" }), {
+          onResize: (from, to) => notices.push({ from, to }),
+        });
+        const marked = (await window.exchange({ operation: "encode", pixels,
+          identifier: new Uint8Array([1, 35, 69, 103, 137]), strength })).value;
+        const exact = (await window.exchange({ operation: "decode", pixels: marked })).value;
+        const canvas = document.querySelector("#marked");
+        canvas.width = marked.width; canvas.height = marked.height;
+        canvas.getContext("2d").putImageData(new ImageData(marked.data, marked.width, marked.height), 0, 0);
+        const exported = await createImageBitmap(await (await fetch(canvas.toDataURL("image/png"))).blob());
+        const copy = document.createElement("canvas");
+        copy.width = exported.width; copy.height = exported.height;
+        copy.getContext("2d").drawImage(exported, 0, 0); exported.close();
+        const png = (await window.exchange({ operation: "decode", pixels: copy.getContext("2d").getImageData(0, 0, copy.width, copy.height) })).value;
+        copy.width = copy.height = 0;
+        const id = value => value.identifier ? Array.from(value.identifier, x => x.toString(16).padStart(2, "0")).join("") : null;
+        return { source: [width, height], marked: [marked.width, marked.height], notices,
+          exact: id(exact), png: id(png) };
+      }, { width, height, strength });
+      const screenshotBytes = await page.locator("#marked").screenshot();
+      const screenshotId = await page.evaluate(async encoded => {
+        const bitmap = await createImageBitmap(await (await fetch(`data:image/png;base64,${encoded}`)).blob());
+        const canvas = document.createElement("canvas");
+        canvas.width = bitmap.width; canvas.height = bitmap.height;
+        const context = canvas.getContext("2d"); context.drawImage(bitmap, 0, 0); bitmap.close();
+        const decoded = (await window.exchange({ operation: "decode", pixels: context.getImageData(0, 0, canvas.width, canvas.height) })).value;
+        canvas.width = canvas.height = 0;
+        return decoded.identifier ? Array.from(decoded.identifier, value => value.toString(16).padStart(2, "0")).join("") : null;
+      }, screenshotBytes.toString("base64"));
+      await page.evaluate(() => { const canvas = document.querySelector("#marked"); canvas.width = canvas.height = 0; });
+      report.cases.push({ name: `large-${width}x${height}`, ...result, screenshot: screenshotId,
+        correct: result.exact === "0123456789" && result.png === "0123456789" && screenshotId === "0123456789" && result.notices.length === 1 });
+      console.log("large-image", JSON.stringify({ ...result, screenshot: screenshotId }));
+    }
+  }
   await page.evaluate(() => window.exchange({ operation: "dispose" }));
 } catch (error) {
   report.error = error.message;

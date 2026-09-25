@@ -31,6 +31,7 @@ function DocumentPages({ bytes, metadata, fingerprintId, shareId, documentId }: 
   const [fitPage, setFitPage] = useState(true);
   const [page, setPage] = useState(1), [count, setCount] = useState(1);
   const [pixels, setPixels] = useState<Pixels | null>(null);
+  const [resolutionNotice, setResolutionNotice] = useState("");
   const [busy, setBusy] = useState(true), [error, setError] = useState("");
   const [authorized, setAuthorized] = useState(!fingerprintId);
   const [full, setFull] = useState(false);
@@ -63,7 +64,9 @@ function DocumentPages({ bytes, metadata, fingerprintId, shareId, documentId }: 
     let cancelled = false;
     void (async () => {
       try {
-        const clean = pdf.current ? await pdf.current.render(page) : await renderLocalFile(new File([bytes], metadata.name, { type: metadata.type }));
+        const clean = pdf.current ? await pdf.current.render(page) : await renderLocalFile(new File([bytes], metadata.name, { type: metadata.type }), {
+          onResize: (from, to) => { if (!cancelled) setResolutionNotice(`Image fitted locally from ${from} to a ${to} marked page. Fine detail may be reduced.`); },
+        });
         if (cancelled) return;
         const output = fingerprintId ? await engine.current!.encode(clean, fingerprintId, 1) : clean;
         if (!cancelled) { setPixels(output); setBusy(false); }
@@ -112,6 +115,7 @@ function DocumentPages({ bytes, metadata, fingerprintId, shareId, documentId }: 
       {fingerprintId && !full && <button className={button} onClick={() => void root.current?.requestFullscreen().catch(() => setError("Fullscreen is required. Use the button to try again."))}>Open protected view</button>}
     </div>
     {fingerprintId ? <p className="text-sm">Experimental low-visibility fingerprint · marked on this device ({runtime}). Crops and phone photos are not qualified.</p> : <p className="text-sm">Legacy preview — this copy has no TrustMark fingerprint.</p>}
+    {resolutionNotice && <p role="note" className="text-sm">{resolutionNotice} Screenshot recovery at this size is unqualified.</p>}
     <div className="print:hidden">
       {error ? <p role="alert" className="rounded-xl border-2 border-black p-6 text-destructive">{error}</p> : busy || !pixels ? <p role="status" className="p-10 text-center">Preparing page locally…</p> : covered ? <p className="p-10 text-center">Document covered. Open protected view and wait for access confirmation. Check your connection if this persists.</p> : <div className="mx-auto max-w-full" style={fitPage && pixels ? {width: `min(100%, calc((100svh - 240px) * ${pixels.width / pixels.height}))`} : {width: "100%"}}><PixelPreview pixels={pixels} label={fingerprintId ? `Marked page ${page}` : `PDF page ${page}`} /></div>}
     </div>
