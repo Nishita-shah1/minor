@@ -25,4 +25,5 @@ Updated 2026-09-25. Keep this a short status snapshot; `ARCHITECTURE.md` is the 
 ## Working notes
 
 - `npm run fingerprint:assets` prepares pinned assets; generated `public/fingerprint-assets/` is not tracked. Relevant scripts: `npm run lint`, `npm run test`, `npm run build`, `npm run db:check`, `npm run test:e2e`, `npm run fingerprint:smoke`, `npm run fingerprint:qualify`.
+- Vercel preview install exposed a root `esbuild@0.25.12` conflict with Vite 8's optional `esbuild@^0.27 || ^0.28` peer. Root `esbuild` is now pinned to 0.28.2 for browser harness scripts; Drizzle Kit keeps its nested 0.25.x. A fresh npm 10 install and local production build passed after the change.
 - The experimental integration was user-approved before screenshot/crop qualification; it did **not** approve a production reliability claim. Do not weaken failed gates. Use disposable databases for migration validation; no push, deployment, or real email is implied by local edits.
