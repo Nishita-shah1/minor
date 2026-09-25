@@ -12,6 +12,7 @@ export async function lookupRecipients(inputEmails: string[]): Promise<PreparedR
   const client = await clerkClient();
   const { data: users } = await client.users.getUserList({ emailAddress: emails, limit: 100 });
 
+  const names = new Map(users.map(user => [user.id, [user.firstName, user.lastName].filter(Boolean).join(" ").trim() || user.username || null]));
   const verifiedByEmail = new Map<string, string>();
   for (const user of users) {
     for (const address of user.emailAddresses) {
@@ -36,6 +37,7 @@ export async function lookupRecipients(inputEmails: string[]): Promise<PreparedR
       email: recipientEmail,
       status: "READY",
       clerkUserId: userId,
+      recipientName: names.get(userId) ?? null,
       publicKeyJwk: bundle.publicKeyJwk,
       publicKeyFingerprint: bundle.publicKeyFingerprint,
       keyVersion: bundle.keyVersion,

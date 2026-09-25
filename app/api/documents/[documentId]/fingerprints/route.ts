@@ -11,7 +11,7 @@ export async function GET(_request: Request, context: { params: Promise<{documen
     const [document] = await getDb().select({id: documents.id}).from(documents).where(and(eq(documents.id, documentId), eq(documents.ownerClerkUserId, user.userId), eq(documents.status, "READY"))).limit(1);
     if (!document) return json({error:{code:"NOT_FOUND",message:"Owned document not found."}},{status:404});
     if (!experimentalFingerprintingEnabled()) return json({error:{code:"NOT_ENABLED",message:"Experimental recipient lookup is awaiting database setup."}},{status:409});
-    const candidates = await getDb().select({ id: shares.id, recipientEmail: shares.recipientEmailNormalized, ownerWrappedKey: copyFingerprints.ownerWrappedKey, profileId: copyFingerprints.profileId }).from(copyFingerprints).innerJoin(shares, eq(shares.id, copyFingerprints.shareId)).where(eq(copyFingerprints.documentId, documentId));
+    const candidates = await getDb().select({ id: shares.id, recipientName: shares.recipientName, recipientEmail: shares.recipientEmailNormalized, ownerWrappedKey: copyFingerprints.ownerWrappedKey, profileId: copyFingerprints.profileId }).from(copyFingerprints).innerJoin(shares, eq(shares.id, copyFingerprints.shareId)).where(eq(copyFingerprints.documentId, documentId));
     return json({documentId,candidates});
   } catch (error) { return safeRouteError(error); }
 }

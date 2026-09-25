@@ -157,6 +157,7 @@ export const shares = pgTable(
       .references(() => uploadGroups.id, { onDelete: "cascade" }),
     senderClerkUserId: text("sender_clerk_user_id").notNull(),
     recipientClerkUserId: text("recipient_clerk_user_id"),
+    recipientName: text("recipient_name"),
     recipientEmailNormalized: text("recipient_email_normalized").notNull(),
     permission: permission("permission").notNull(),
     status: shareStatus("status").notNull(),

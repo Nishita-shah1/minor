@@ -15,7 +15,7 @@ async function main() {
     return r.stdout.trim();
   };
   const query = (text: string) => command(["exec", "-i", container, "psql", "-U", "postgres", "-At", "-v", "ON_ERROR_STOP=1"], text);
-  const recipient = (email: string, userId = email) => ({ id: randomUUID(), email, userId, status: "ACTIVE", keyVersion: 1, envelopes: [{ documentId: document, wrappedFileKey: "public-test-wrapper", fingerprint: {ownerWrappedKey:"owner-test-wrapper",recipientWrappedKey:"recipient-test-wrapper",profileId:"trustmark-q-lab-v2"} }] });
+  const recipient = (email: string, userId = email) => ({ recipientName: "Fixture Recipient", id: randomUUID(), email, userId, status: "ACTIVE", keyVersion: 1, envelopes: [{ documentId: document, wrappedFileKey: "public-test-wrapper", fingerprint: {ownerWrappedKey:"owner-test-wrapper",recipientWrappedKey:"recipient-test-wrapper",profileId:"trustmark-q-lab-v2"} }] });
   const append = (rows: ReturnType<typeof recipient>[], owner = "owner") => {
     const q = new PgDialect().sqlToQuery(appendRecipientsSql(group, owner, rows, true));
     return q.sql.replace(/\$(\d+)/g, (_, n) => `'${String(q.params[Number(n) - 1]).replaceAll("'", "''")}'`);
@@ -34,6 +34,7 @@ async function main() {
       INSERT INTO share_batches(id,group_id,sender_clerk_user_id,permission) VALUES('${batch}','${group}','owner','VIEW_ONLY');`);
     const alice = recipient("alice@example.test");
     query(transaction(append([alice])));
+    assert.equal(query(`SELECT recipient_name FROM shares WHERE id='${alice.id}'`), "Fixture Recipient");
     query(`DELETE FROM copy_fingerprints WHERE share_id='${alice.id}'`);
     query(transaction(append([recipient(alice.email)])));
     assert.equal(query("SELECT count(*) FROM copy_fingerprints"), "1");

@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { KeyVaultDialog } from "@/components/crypto/key-vault-dialog";
 import { useKeyVault } from "@/hooks/use-key-vault";
 import { unwrapCopyIdentifier, EXPERIMENTAL_PROFILE } from "@/lib/fingerprint/copy-secret";
-export type LocalCandidate = { id: string; identifier: Uint8Array; recipientEmail: string };
+export type LocalCandidate = { id: string; identifier: Uint8Array; recipientEmail: string; recipientName?: string | null };
 export function CopyLookup({ onChange }: { onChange: (candidates: LocalCandidate[]) => void }) {
   const { user } = useUser();
   const vault = useKeyVault(user?.id);
@@ -31,7 +31,7 @@ export function CopyLookup({ onChange }: { onChange: (candidates: LocalCandidate
       const candidates: LocalCandidate[] = [];
       for (const candidate of body.candidates) {
         if (candidate.profileId !== EXPERIMENTAL_PROFILE) throw new Error("An issued profile is unavailable; lookup cannot safely continue.");
-        candidates.push({id:candidate.id,recipientEmail:candidate.recipientEmail,identifier:await unwrapCopyIdentifier(selected,candidate.ownerWrappedKey,vault.state.privateKey)});
+        candidates.push({id:candidate.id,recipientName:candidate.recipientName,recipientEmail:candidate.recipientEmail,identifier:await unwrapCopyIdentifier(selected,candidate.ownerWrappedKey,vault.state.privateKey)});
       }
       onChange(candidates); setMessage(candidates.length ? `${candidates.length} historical copies loaded locally. Analyze your screenshot.` : "No fingerprint records exist for this document. Older unmarked shares cannot be traced.");
     } catch(error) {setMessage(error instanceof Error ? error.message : "Copy records could not be decrypted.");}

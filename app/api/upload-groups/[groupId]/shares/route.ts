@@ -61,6 +61,7 @@ export async function POST(request: Request, context: RouteContext<"/api/upload-
 
     const db = getDb();
     const recipients = input.recipients.map(recipient => ({
+      recipientName: liveByEmail.get(normalizeEmail(recipient.email))?.recipientName ?? null,
       id: crypto.randomUUID(), email: normalizeEmail(recipient.email),
       userId: recipient.status === "READY" ? recipient.clerkUserId : null,
       status: recipient.status === "READY" ? "ACTIVE" : "AWAITING_RECIPIENT_KEY",

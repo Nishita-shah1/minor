@@ -17,7 +17,7 @@ const field = "block w-full rounded-lg border-2 border-black bg-background p-3 t
 export function ScanWorkspace() {
   const [selectArea, setSelectArea] = useState(false);
   const [areaPoints, setAreaPoints] = useState<Point[]>([]);
-  const [lookupOpen, setLookupOpen] = useState(false);
+  const [lookupOpen, setLookupOpen] = useState(true);
   const [candidates, setCandidates] = useState<LocalCandidate[]>([]);
   const engine = useRef<BrowserFingerprintEngine | null>(null);
   const generation = useRef(0);
@@ -90,7 +90,7 @@ export function ScanWorkspace() {
         candidates, decode: pixels => engine.current!.decode(pixels) });
       if (!current()) return;
       setResult(response); setDuration(performance.now() - start);
-      setMessage(response.status === "CANDIDATE_MATCH" ? "A matching distributed copy was found. This does not identify who intentionally disclosed it." : response.status === "UNKNOWN_MARK" ? "Compatible fingerprint recovered. No unique matching recipient was found in the selected records."
+      setMessage(response.status === "CANDIDATE_MATCH" ? "A matching distributed copy was found. This does not identify who intentionally disclosed it." : response.status === "UNKNOWN_MARK" ? (candidates.length ? "Compatible fingerprint recovered, but it does not match the loaded recipient copies." : "Fingerprint recovered. Select the original shared document above, unlock your owner keys, load recipient copies, then analyze again to identify the matching copy.")
         : response.status === "NO_RELIABLE_MARK" ? "No reliable fingerprint was recovered. No recipient has been identified."
         : `Inconclusive — ${response.reason?.replaceAll("_", " ").toLowerCase() ?? "unable to establish a reliable result"}.`);
     });
@@ -144,7 +144,7 @@ export function ScanWorkspace() {
       <p className="max-w-3xl text-lg text-muted-foreground">Check a screenshot for a compatible fingerprint, entirely in your browser.</p>
       <div className="rounded-xl border-2 border-black bg-primary/20 p-4 text-sm"><strong>Experimental local testing.</strong> Local fingerprint check. Recipient lookup requires owner keys and newly fingerprinted shares. Crops and phone photos are unverified.</div>
     </header>
-    <button className={`${button} bg-card`} onClick={() => { setLookupOpen(value => !value); setCandidates([]); clearResult(); }}>{lookupOpen ? "Hide recipient lookup" : "Find the recipient copy (optional)"}</button>
+    <button className={`${button} bg-card`} onClick={() => { setLookupOpen(value => !value); setCandidates([]); clearResult(); }}>{lookupOpen ? "Hide recipient lookup" : "Find the recipient copy"}</button>
     {lookupOpen && <CopyLookup onChange={value => {setCandidates(value); clearResult();}} />}
     <div className="grid gap-7 xl:grid-cols-[1.2fr_1fr]">
       <section className={panel}>
@@ -169,7 +169,7 @@ export function ScanWorkspace() {
         <p role="status" aria-live="polite" className="rounded-lg border-2 border-black bg-background p-4">{message}</p>
         {result && <div className="space-y-3" data-testid="scan-result">
           <p className="font-mono text-sm font-bold">{result.status}</p>
-          {result.status === "CANDIDATE_MATCH" && <p className="text-xl font-bold">Matching copy: {candidates.find(candidate => candidate.id === result.candidateId)?.recipientEmail}</p>}
+          {result.status === "CANDIDATE_MATCH" && <div className="rounded-xl border-2 border-black bg-primary/20 p-4 space-y-2"><p className="text-xl font-bold">{candidates.find(candidate => candidate.id === result.candidateId)?.recipientName || "Name unavailable"}</p><p className="break-all">{candidates.find(candidate => candidate.id === result.candidateId)?.recipientEmail}</p><p className="text-sm break-all">Share ID: {result.candidateId}</p></div>}
           {result.identifier && <div><p className="text-sm">Recovered fingerprint ID</p><output data-testid="recovered-identifier" className="break-all font-mono text-2xl font-bold">{result.identifier}</output></div>}
           <p className="text-sm text-muted-foreground">{result.attempts} decode attempt{result.attempts === 1 ? "" : "s"} · {duration?.toFixed(0)} ms{result.coverage !== null ? ` · ${(result.coverage * 100).toFixed(1)}% observed coverage` : ""}</p>
           <p className="text-sm">A recovered ID does not prove who took a screenshot, who disclosed it, or that the image is authentic.</p>

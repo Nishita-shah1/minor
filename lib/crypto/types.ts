@@ -55,6 +55,7 @@ export type DocumentDownloadAccess = {
 };
 
 export type PreparedRecipient = {
+  recipientName?: string | null;
   email: string;
   status: "READY" | "NOT_ENROLLED";
   clerkUserId?: string;
