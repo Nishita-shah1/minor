@@ -2,10 +2,12 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { FileLock2 } from "lucide-react";
 
 export function HeroSection() {
   const videoRef = useRef<HTMLVideoElement>(null);
+  const [previewVersion, setPreviewVersion] = useState(0);
   const [audioOn, setAudioOn] = useState(false);
 
   const [playbackFailed, setPlaybackFailed] = useState(false);
@@ -13,6 +15,10 @@ export function HeroSection() {
   const play = useCallback(async (withAudio: boolean) => {
     const video = videoRef.current;
     if (!video) return;
+    if (withAudio) {
+      video.currentTime = 0;
+      setPreviewVersion((version) => version + 1);
+    }
     if (video.error) video.load();
     video.muted = !withAudio;
     try {
@@ -30,21 +36,22 @@ export function HeroSection() {
     const video = videoRef.current;
     if (!video) return;
     video.muted = true;
-    void video.play().catch(() => setPlaybackFailed(true));
+    // The silent animated preview is the default on all devices.
+    // Start native video only after an explicit request for sound.
   }, []);
 
   return (
-    <section className="relative h-svh w-full overflow-hidden">
+    <section className="relative isolate h-svh w-full overflow-hidden">
       <video
         ref={videoRef}
-        autoPlay
         muted
         loop
         playsInline
         preload="auto"
         poster="/video/echoleaks-hero-poster.jpg"
         onError={() => setPlaybackFailed(true)}
-        className="pointer-events-none absolute inset-0 h-full w-full object-cover"
+        aria-hidden="true"
+        className="pointer-events-none invisible absolute inset-0 h-full w-full"
       >
         <source src="/video/echoleaks-hero.webm" type="video/webm" />
         <source
@@ -53,6 +60,7 @@ export function HeroSection() {
         />
       </video>
 
+      <Image key={previewVersion} src="/video/echoleaks-hero-preview.webp" alt="Animated EchoLeaks introduction" fill unoptimized priority className="pointer-events-none object-cover" />
       <button
         type="button"
         onClick={() => void play(!audioOn)}
@@ -61,7 +69,7 @@ export function HeroSection() {
         {playbackFailed ? "Retry video" : audioOn ? "Mute video" : "Play with sound"}
       </button>
       {playbackFailed && (
-        <p role="status" className="absolute bottom-28 left-5 z-20 rounded-xl border-2 border-black bg-background p-3 text-sm">
+        <p role="status" className="absolute bottom-40 left-5 z-20 rounded-xl border-2 border-black bg-background p-3 text-sm">
           Video playback is unavailable. Try again or reload the page.
         </p>
       )}
@@ -71,7 +79,7 @@ export function HeroSection() {
       </h1>
 
       <div className="pointer-events-none absolute right-0 bottom-6 z-10 p-5 sm:bottom-8 sm:p-7 md:bottom-10 md:p-9">
-        <div className="pointer-events-auto flex w-[min(calc(100vw-2.5rem),20rem)] flex-col gap-2 text-left sm:w-[22rem]">
+        <div className="pointer-events-auto flex w-[min(calc(100vw-2.5rem),20rem)] flex-col gap-2 rounded-2xl border-2 border-black bg-background p-4 text-left shadow-md sm:w-[22rem]">
           <div className="space-y-1.5">
             <p className="hero-animate hero-animate-2 text-sm leading-snug font-semibold tracking-tight text-black">
               Share confidential files. Know when they leak.
