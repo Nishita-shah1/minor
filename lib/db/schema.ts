@@ -162,6 +162,9 @@ export const shares = pgTable(
     permission: permission("permission").notNull(),
     status: shareStatus("status").notNull(),
     providerMessageId: text("provider_message_id"),
+    emailStatus: emailStatus("email_status").notNull().default("NOT_REQUESTED"),
+    emailAttemptId: uuid("email_attempt_id"),
+    emailUpdatedAt: timestamp("email_updated_at", { withTimezone: true }),
     revokedAt: timestamp("revoked_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
@@ -195,3 +198,13 @@ export const copyFingerprints = pgTable("copy_fingerprints", {
   profileId: text("profile_id").notNull(),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 }, table => [uniqueIndex("copy_fingerprints_document_share_idx").on(table.documentId, table.shareId)]);
+
+export const invitationGrants = pgTable("invitation_grants", {
+  shareId: uuid("share_id").primaryKey().references(() => shares.id, { onDelete: "cascade" }),
+  ciphertext: text("ciphertext").notNull(),
+  iv: text("iv").notNull(),
+  proof: text("proof").notNull(),
+  ownerWrappedSecret: text("owner_wrapped_secret").notNull(),
+  fingerprints: jsonb("fingerprints").$type<Array<{ documentId: string; ownerWrappedKey: string; profileId: string }>>().notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});

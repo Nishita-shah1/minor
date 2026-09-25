@@ -2,12 +2,14 @@ import { auth } from "@clerk/nextjs/server";
 import { LockKeyhole } from "lucide-react";
 import Link from "next/link";
 import { SecureShareClient } from "@/components/share/secure-share-client";
+import { InvitationCapture } from "@/components/share/invitation-capture";
 
 export default async function SharePage({ params }: { params: Promise<{ shareId: string }> }) {
   const { shareId } = await params;
   const session = await auth();
   if (!session.isAuthenticated) {
     return (
+      <><InvitationCapture shareId={shareId} />
       <main className="flex min-h-svh flex-col items-center justify-center gap-5 bg-background px-5">
         <LockKeyhole className="size-12" />
         <h1 className="font-head text-3xl">Protected file</h1>
@@ -20,8 +22,8 @@ export default async function SharePage({ params }: { params: Promise<{ shareId:
         >
           Sign in to continue
         </Link>
-      </main>
+      </main></>
     );
   }
-  return <SecureShareClient shareId={shareId} />;
+  return <><InvitationCapture shareId={shareId} /><SecureShareClient shareId={shareId} /></>;
 }

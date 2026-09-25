@@ -7,6 +7,7 @@ import { KeyVaultDialog } from "@/components/crypto/key-vault-dialog";
 import { BrowserFingerprintEngine } from "@/lib/fingerprint/worker-client";
 import { unwrapCopyIdentifier, EXPERIMENTAL_PROFILE } from "@/lib/fingerprint/copy-secret";
 import { SecureViewer } from "@/components/share/secure-viewer";
+import { InvitationClaim } from "@/components/share/invitation-claim";
 import { useKeyVault } from "@/hooks/use-key-vault";
 import type { FileMetadata, ShareAccessResponse } from "@/lib/crypto/types";
 import { decryptDownload, decryptMetadata } from "@/lib/crypto/worker-client";
@@ -20,6 +21,7 @@ export function SecureShareClient({ shareId }: { shareId: string }) {
   const [access, setAccess] = useState<ShareAccessResponse | null>(null);
   const [files, setFiles] = useState<ManifestFile[]>([]);
   const [forbidden, setForbidden] = useState(false);
+  const [pendingInvitation, setPendingInvitation] = useState(false);
   const [deleted, setDeleted] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -33,6 +35,7 @@ export function SecureShareClient({ shareId }: { shareId: string }) {
       if (cancelled) return;
       if (body.error?.code === "SHARE_DELETED") return setDeleted(true);
       if (body.error?.code === "FORBIDDEN") return setForbidden(true);
+      if (body.error?.code === "PENDING_INVITATION") return setPendingInvitation(true);
       if (!response.ok) throw new Error(body.error?.message ?? "Could not open this protected share.");
       setAccess(body);
     }).catch((caught) => { if (!cancelled) setError(caught instanceof Error ? caught.message : "Share access failed."); })
@@ -74,6 +77,7 @@ export function SecureShareClient({ shareId }: { shareId: string }) {
   const recordEvent = (eventType: string) => fetch(`/api/shares/${shareId}/events`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ eventType }) });
 
   if (forbidden) return <ShareShell><AlertTriangle className="size-12 text-destructive" /><h1 className="font-head text-3xl">Wrong account</h1><p className="max-w-md text-center text-muted-foreground">This Clerk account is not authorized. No encrypted manifest, key, or storage URL was released.</p><SignOutButton redirectUrl={`/share/${shareId}`}><button className="flex items-center gap-2 rounded-full border-2 border-black bg-primary px-6 py-3 font-head shadow-md"><LogOut className="size-4" /> Switch account</button></SignOutButton></ShareShell>;
+  if (pendingInvitation) return <InvitationClaim shareId={shareId} vault={vault} />;
   if (deleted) return <ShareShell><Trash2 className="size-12" /><h1 className="font-head text-3xl">Share deleted</h1><p className="max-w-md text-center text-muted-foreground">This protected share was deleted by its owner. Its encrypted files and cryptographic access material are no longer available.</p></ShareShell>;
   if (error && !access) return <ShareShell><AlertTriangle className="size-12 text-destructive" /><h1 className="font-head text-2xl">Share unavailable</h1><p className="max-w-md text-center text-destructive">{error}</p></ShareShell>;
 

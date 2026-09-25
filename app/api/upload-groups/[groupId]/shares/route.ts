@@ -4,7 +4,7 @@ import { normalizeEmail } from "@/lib/auth/email";
 import { requireVerifiedUser } from "@/lib/auth/current-verified-user";
 import { lookupRecipients } from "@/lib/auth/recipient-lookup";
 import { getDb } from "@/lib/db";
-import { documents, shareBatches, shares, uploadGroups, userKeyBundles } from "@/lib/db/schema";
+import { documents, invitationGrants, shareBatches, shares, uploadGroups, userKeyBundles } from "@/lib/db/schema";
 import { getAppEnv } from "@/lib/server/env";
 import { json, requireUuid, safeRouteError } from "@/lib/server/http";
 import { createShares } from "@/lib/server/validators";
@@ -17,6 +17,7 @@ export async function POST(request: Request, context: RouteContext<"/api/upload-
     const user = await requireVerifiedUser();
     const groupId = requireUuid((await context.params).groupId);
     const input = createShares.parse(await request.json());
+    if (input.permission !== "VIEW_ONLY") return json({ error: { code: "VIEW_ONLY_REQUIRED", message: "New protected links must be view-only." } }, { status: 400 });
     const [group] = await getDb().select({ id: uploadGroups.id }).from(uploadGroups).where(and(
       eq(uploadGroups.id, groupId), eq(uploadGroups.ownerClerkUserId, user.userId), eq(uploadGroups.status, "READY"),
     )).limit(1);
@@ -90,11 +91,15 @@ export async function POST(request: Request, context: RouteContext<"/api/upload-
 async function loadLinks(groupId: string) {
   const [batch] = await getDb().select().from(shareBatches).where(eq(shareBatches.groupId, groupId)).limit(1);
   if (!batch) return { batchId: null, shares: [] };
-  const rows = await getDb().select().from(shares).where(eq(shares.batchId, batch.id));
+  const rows = await getDb().select({ share: shares, ownerWrappedInviteSecret: invitationGrants.ownerWrappedSecret })
+    .from(shares).leftJoin(invitationGrants, eq(invitationGrants.shareId, shares.id)).where(eq(shares.batchId, batch.id));
   const appUrl = getAppEnv().APP_URL.replace(/\/$/, "");
   return { batchId: batch.id, emailAttemptId: batch.emailStatus === "SENDING" || batch.emailStatus === "FAILED" ? batch.emailAttemptId : null, permission: batch.permission, availableFrom: batch.availableFrom, expiresAt: batch.expiresAt,
-    shares: rows.map(row => ({ shareId: row.id, recipientEmail: row.recipientEmailNormalized, status: row.status,
-      shareUrl: row.status === "ACTIVE" ? `${appUrl}/share/${row.id}` : null })) };
+    shares: rows.map(({share, ownerWrappedInviteSecret}) => ({ shareId: share.id, recipientEmail: share.recipientEmailNormalized,
+      status: share.status, emailStatus: share.emailStatus, emailAttemptId: share.emailAttemptId,
+      ownerWrappedInviteSecret: share.status === "AWAITING_RECIPIENT_KEY" ? ownerWrappedInviteSecret : null,
+      shareBaseUrl: `${appUrl}/share/${share.id}`,
+      shareUrl: share.status === "ACTIVE" ? `${appUrl}/share/${share.id}` : null })) };
 }
 
 export async function GET(_request: Request, context: RouteContext<"/api/upload-groups/[groupId]/shares">) {

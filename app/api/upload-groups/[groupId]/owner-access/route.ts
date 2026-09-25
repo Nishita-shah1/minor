@@ -1,7 +1,7 @@
 import { and, eq } from "drizzle-orm";
 import { requireVerifiedUser } from "@/lib/auth/current-verified-user";
 import { getDb } from "@/lib/db";
-import { documentKeyEnvelopes, documents, uploadGroups, userKeyBundles, copyFingerprints } from "@/lib/db/schema";
+import { documentKeyEnvelopes, documents, uploadGroups, userKeyBundles, copyFingerprints, invitationGrants, shares } from "@/lib/db/schema";
 import { experimentalFingerprintingEnabled } from "@/lib/fingerprint/server-config";
 import { json, requireUuid, safeRouteError } from "@/lib/server/http";
 
@@ -25,7 +25,10 @@ export async function GET(_request: Request, context: RouteContext<"/api/upload-
     const enabled = experimentalFingerprintingEnabled();
     const [bundle] = enabled ? await getDb().select({ publicKeyJwk: userKeyBundles.publicKeyJwk }).from(userKeyBundles).where(eq(userKeyBundles.clerkUserId, user.userId)).limit(1) : [];
     const fingerprints = enabled ? await getDb().select({ documentId: copyFingerprints.documentId, ownerWrappedKey: copyFingerprints.ownerWrappedKey }).from(copyFingerprints).innerJoin(documents, eq(documents.id, copyFingerprints.documentId)).where(eq(documents.groupId, groupId)) : [];
-    return json({ groupId, status: group.status, files, fingerprintOwnerPublicKey: bundle?.publicKeyJwk, existingFingerprints: fingerprints });
+    const pending = enabled ? await getDb().select({ fingerprints: invitationGrants.fingerprints }).from(invitationGrants)
+      .innerJoin(shares, eq(shares.id, invitationGrants.shareId)).where(eq(shares.groupId, groupId)) : [];
+    return json({ groupId, status: group.status, files, fingerprintOwnerPublicKey: bundle?.publicKeyJwk,
+      existingFingerprints: [...fingerprints, ...pending.flatMap(row => row.fingerprints.map(({documentId, ownerWrappedKey}) => ({documentId, ownerWrappedKey})))] });
   } catch (error) {
     return safeRouteError(error);
   }

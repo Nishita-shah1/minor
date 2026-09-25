@@ -1,8 +1,8 @@
 import "server-only";
 
-import { and, eq, inArray, ne } from "drizzle-orm";
+import { and, eq, inArray, ne, sql } from "drizzle-orm";
 import { getDb } from "@/lib/db";
-import { documentKeyEnvelopes, documents, shares, uploadGroups, copyFingerprints } from "@/lib/db/schema";
+import { documentKeyEnvelopes, documents, shares, uploadGroups, copyFingerprints, invitationGrants } from "@/lib/db/schema";
 import { experimentalFingerprintingEnabled } from "@/lib/fingerprint/server-config";
 import { deleteEncryptedObject } from "@/lib/r2/objects";
 
@@ -37,6 +37,12 @@ export async function deleteOwnedDocument(documentId: string, ownerClerkUserId: 
   if (row.status !== "DELETED") {
     await getDb().update(documents).set({ status: "DELETING", updatedAt: new Date() })
       .where(and(eq(documents.id, documentId), ne(documents.status, "DELETED")));
+    await getDb().batch([
+      getDb().update(shares).set({ status: "REVOKED", revokedAt: new Date() })
+        .where(and(eq(shares.groupId, row.groupId), eq(shares.status, "AWAITING_RECIPIENT_KEY"))),
+      getDb().delete(invitationGrants).where(inArray(invitationGrants.shareId,
+        sql`SELECT id FROM shares WHERE group_id = ${row.groupId}::uuid`)),
+    ]);
     await eraseDocuments([row]);
   }
   const remaining = await getDb().select({ id: documents.id }).from(documents)
@@ -63,6 +69,8 @@ export async function deleteOwnedGroup(groupId: string, ownerClerkUserId: string
       .where(and(eq(documents.groupId, groupId), ne(documents.status, "DELETED"))),
     getDb().update(shares).set({ status: "DELETED", revokedAt: new Date(), providerMessageId: null })
       .where(eq(shares.groupId, groupId)),
+    getDb().delete(invitationGrants).where(inArray(invitationGrants.shareId,
+      sql`SELECT id FROM shares WHERE group_id = ${groupId}::uuid`)),
   ]);
   await eraseDocuments(rows);
   await getDb().update(uploadGroups).set({ status: "DELETED", deletedAt: new Date(), updatedAt: new Date() })

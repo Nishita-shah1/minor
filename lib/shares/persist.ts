@@ -23,7 +23,7 @@ export function appendRecipientsSql(groupId: string, ownerId: string, recipients
         + (SELECT count(*) FROM additions) <= 100 AS allowed
     ), inserted AS (
       INSERT INTO shares (id, batch_id, group_id, sender_clerk_user_id, recipient_clerk_user_id, recipient_email_normalized, recipient_name, permission, status)
-      SELECT r.id, b.id, b.group_id, b.sender_clerk_user_id, r."userId", r.email, r."recipientName", b.permission, r.status::share_status
+      SELECT r.id, b.id, b.group_id, b.sender_clerk_user_id, r."userId", r.email, r."recipientName", 'VIEW_ONLY'::share_permission, r.status::share_status
       FROM additions r CROSS JOIN batch b CROSS JOIN allowance a
       WHERE a.allowed AND b.email_status <> 'SENDING'
       RETURNING id

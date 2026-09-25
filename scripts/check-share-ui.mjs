@@ -9,7 +9,8 @@ const root = process.cwd(), output = path.join(root, ".fingerprint-results/share
 await mkdir(output, { recursive: true });
 await writeFile(path.join(output,"entry.tsx"), `import React from 'react';import{createRoot}from'react-dom/client';import{SharePanel}from'../../components/dashboard/share-panel';createRoot(document.getElementById('root')!).render(<SharePanel groupId="11111111-1111-4111-8111-111111111111" privateKey={{} as CryptoKey}/>);`);
 await writeFile(path.join(output,"wrapping.ts"), `export async function rewrapForRecipients({recipients,documents}){return recipients.filter(r=>r.status==='READY').map(r=>({...r,envelopes:documents.map(d=>({documentId:d.documentId,wrappedFileKey:'test-envelope'}))}));}`);
-await build({entryPoints:[path.join(output,"entry.tsx")],outfile:path.join(output,"app.js"),bundle:true,format:"esm",platform:"browser",jsx:"automatic",alias:{"@/lib/crypto/worker-client":path.join(output,"wrapping.ts"),"@":root}});
+await writeFile(path.join(output,"invitations.ts"), `export async function prepareInvitation(){return{ciphertext:'ciphertext',iv:'iv',proof:'proof',ownerWrappedSecret:'owner-secret',fingerprints:[{documentId:'33333333-3333-4333-8333-333333333333',ownerWrappedKey:'owner-wrapper',profileId:'trustmark-q-lab-v2'}],inviteSecret:'${"a".repeat(43)}'}};export async function recoverInvitationSecret(){return '${"a".repeat(43)}';}`);
+await build({entryPoints:[path.join(output,"entry.tsx")],outfile:path.join(output,"app.js"),bundle:true,format:"esm",platform:"browser",jsx:"automatic",alias:{"@/lib/crypto/worker-client":path.join(output,"wrapping.ts"),"@/lib/shares/invitation-crypto":path.join(output,"invitations.ts"),"@":root}});
 const state = { batchId:null, shares:[], permission:"VIEW_ONLY", availableFrom:null, expiresAt:null };
 const emails=[];
 const report={checks:[],errors:[],scope:"Component with mocked services; no real email"};
@@ -21,16 +22,17 @@ const server=createServer(async(req,res)=>{
   let raw="";for await(const chunk of req)raw+=chunk;
   const body=raw?JSON.parse(raw):{};
   res.setHeader("Content-Type","application/json");
-  if(url.pathname.endsWith("/owner-access"))return res.end(JSON.stringify({files:[{documentId:"33333333-3333-4333-8333-333333333333",status:"READY",wrappedFileKey:"test"}]}));
-  if(url.pathname.endsWith("/prepare"))return res.end(JSON.stringify({recipients:body.recipientEmails.map(email=>({email,status:"READY",clerkUserId:email,keyVersion:1,publicKeyFingerprint:"a".repeat(64),publicKeyJwk:{}}))}));
+  if(url.pathname.endsWith("/owner-access"))return res.end(JSON.stringify({fingerprintOwnerPublicKey:{},existingFingerprints:[],files:[{documentId:"33333333-3333-4333-8333-333333333333",status:"READY",wrappedFileKey:"test"}]}));
+  if(url.pathname.endsWith("/prepare"))return res.end(JSON.stringify({recipients:body.recipientEmails.map(email=>email.startsWith("bob")?{email,status:"NOT_ENROLLED"}:{email,status:"READY",clerkUserId:email,keyVersion:1,publicKeyFingerprint:"a".repeat(64),publicKeyJwk:{}})}));
   if(url.pathname.endsWith("/shares")){
    if(req.method==="POST"){
     state.batchId="22222222-2222-4222-8222-222222222222";
-    for(const r of body.recipients)if(!state.shares.some(s=>s.recipientEmail===r.email)){const id=crypto.randomUUID();state.shares.push({shareId:id,recipientEmail:r.email,status:"ACTIVE",shareUrl:`http://example.test/share/${id}`});}
+    for(const r of body.recipients)if(!state.shares.some(s=>s.recipientEmail===r.email)){const id=crypto.randomUUID();state.shares.push({shareId:id,recipientEmail:r.email,status:r.status==="READY"?"ACTIVE":"AWAITING_RECIPIENT_KEY",emailStatus:"NOT_REQUESTED",shareBaseUrl:`http://example.test/share/${id}`,shareUrl:r.status==="READY"?`http://example.test/share/${id}`:null});}
    }
    return res.end(JSON.stringify(state));
   }
-  if(url.pathname.endsWith("/email")){emails.push(body);return res.end('{"status":"ACCEPTED"}');}
+  if(url.pathname.endsWith("/invitation")){const id=url.pathname.split("/")[3];state.shares.find(s=>s.shareId===id).ownerWrappedInviteSecret="owner-secret";return res.end('{"ready":true}');}
+  if(url.pathname.endsWith("/email")){emails.push(body);const id=url.pathname.split("/")[3];state.shares.find(s=>s.shareId===id).emailStatus="ACCEPTED";return res.end('{"status":"ACCEPTED"}');}
   res.writeHead(404).end();
  }catch(error){report.errors.push(error.message);res.writeHead(500).end();}
 });
@@ -43,12 +45,12 @@ try {
  const origin=`http://127.0.0.1:${server.address().port}`;
  page.on("request",req=>{if(!req.url().startsWith(origin))report.errors.push(`Unexpected external request: ${req.url()}`);});
  await page.goto(origin);
- async function add(email,button){await page.getByPlaceholder("recipient@example.com").fill(email);await page.getByRole("button",{name:"Add",exact:true}).click();await page.getByRole("button",{name:"Prepare share",exact:true}).click();await page.getByRole("button",{name:button,exact:true}).click();await expect(page.getByRole("dialog")).toBeVisible();}
- await add("alice@example.test","Create secure links");
+ async function add(email){await page.getByPlaceholder("recipient@example.com").fill(email);await page.getByRole("button",{name:"Add",exact:true}).click();await page.getByRole("button",{name:"Send",exact:true}).click();await expect(page.getByRole("dialog")).toBeVisible();}
+ await add("alice@example.test");
  const alice=state.shares[0].shareUrl;
  await page.getByRole("button",{name:"Copy link",exact:true}).click();
  expect(await page.evaluate(()=>navigator.clipboard.readText())).toBe(alice);
- report.checks.push("create opens popup; copy returns persisted link");
+ report.checks.push("Send opens popup; copy returns persisted link");
  await page.keyboard.press("Escape");
  await page.getByRole("button",{name:"View secure links",exact:true}).click();
  await expect(page.getByLabel("Secure link for alice@example.test")).toHaveValue(alice);
@@ -58,17 +60,19 @@ try {
  await expect(page.getByLabel("Secure link for alice@example.test")).toHaveValue(alice);
  report.checks.push("reload loads persisted links");
  await page.keyboard.press("Escape");
- await add("bob@example.test","Add recipients and show links");
+ await add("bob@example.test");
  expect(state.shares.length).toBe(2);
  await expect(page.getByLabel("Secure link for alice@example.test")).toHaveValue(alice);
  await expect(page.getByLabel("Secure link for bob@example.test")).toBeVisible();
- report.checks.push("append keeps Alice link and adds Bob in same batch");
- await page.getByRole("button",{name:"Send / resend links via Brevo",exact:true}).click();
- await expect(page.getByRole("dialog")).toContainText("Brevo accepted");
- await page.getByRole("button",{name:"Send / resend links via Brevo",exact:true}).click();
+ report.checks.push("append keeps Alice link and adds Bob's pending invitation in same batch");
  await expect.poll(()=>emails.length).toBe(2);
- expect(emails[0].attemptId).not.toBe(emails[1].attemptId);
- report.checks.push("explicit resend uses new attempt; dialog remains available");
+ const bob = state.shares[1];
+ expect(emails[1].invitationUrl).toContain(`#invite=${"a".repeat(43)}`);
+ await page.getByRole("button",{name:"Send again",exact:true}).last().click();
+ await expect.poll(()=>emails.length).toBe(3);
+ expect(emails[1].attemptId).not.toBe(emails[2].attemptId);
+ expect(bob.shareUrl).toBeNull();
+ report.checks.push("automatic delivery and explicit resend use distinct attempts; dialog remains available");
  if(report.errors.length)throw Error(report.errors.join("\n"));
  await page.screenshot({path:path.join(output,"popup.png"),fullPage:true});
 }catch(error){report.errors.push(error.message);process.exitCode=1;}
