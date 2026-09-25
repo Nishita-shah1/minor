@@ -1,13 +1,14 @@
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import { ZodError } from "zod";
 import { normalizeEmail } from "@/lib/auth/email";
 import { requireVerifiedUser } from "@/lib/auth/current-verified-user";
 import { lookupRecipients } from "@/lib/auth/recipient-lookup";
 import { getDb } from "@/lib/db";
-import { documentKeyEnvelopes, documents, shareBatches, shares, uploadGroups, userKeyBundles } from "@/lib/db/schema";
+import { documents, shareBatches, shares, uploadGroups, userKeyBundles } from "@/lib/db/schema";
 import { getAppEnv } from "@/lib/server/env";
 import { json, requireUuid, safeRouteError } from "@/lib/server/http";
 import { createShares } from "@/lib/server/validators";
+import { appendRecipientsSql } from "@/lib/shares/persist";
 import { validateShareSchedule } from "@/lib/shares/schedule";
 
 export async function POST(request: Request, context: RouteContext<"/api/upload-groups/[groupId]/shares">) {
@@ -19,9 +20,9 @@ export async function POST(request: Request, context: RouteContext<"/api/upload-
       eq(uploadGroups.id, groupId), eq(uploadGroups.ownerClerkUserId, user.userId), eq(uploadGroups.status, "READY"),
     )).limit(1);
     if (!group) return json({ error: { code: "NOT_FOUND", message: "Ready upload group not found." } }, { status: 404 });
-    const [existingBatch] = await getDb().select({ id: shareBatches.id }).from(shareBatches)
-      .where(eq(shareBatches.groupId, groupId)).limit(1);
-    if (existingBatch) return json({ error: { code: "SHARES_ALREADY_CREATED", message: "Secure links already exist for this group." } }, { status: 409 });
+    const [existingBatch] = await getDb().select().from(shareBatches).where(eq(shareBatches.groupId, groupId)).limit(1);
+    const normalized = input.recipients.map(recipient => normalizeEmail(recipient.email));
+    if (new Set(normalized).size !== normalized.length) return json({ error: { code: "DUPLICATE_EMAIL", message: "Use each recipient email once." } }, { status: 400 });
     const groupDocuments = await getDb().select({ id: documents.id }).from(documents)
       .where(and(eq(documents.groupId, groupId), eq(documents.status, "READY")));
     const documentIds = groupDocuments.map((document) => document.id);
@@ -30,7 +31,7 @@ export async function POST(request: Request, context: RouteContext<"/api/upload-
     const availableFrom = input.availableFrom ? new Date(input.availableFrom) : null;
     const expiresAt = input.expiresAt ? new Date(input.expiresAt) : null;
     const scheduleError = validateShareSchedule({ availableFrom, expiresAt });
-    if (scheduleError) return json({ error: { code: "INVALID_SCHEDULE", message: scheduleError } }, { status: 400 });
+    if (!existingBatch && scheduleError) return json({ error: { code: "INVALID_SCHEDULE", message: scheduleError } }, { status: 400 });
 
     const ready = input.recipients.filter((recipient) => recipient.status === "READY");
     const userIds = ready.map((recipient) => recipient.clerkUserId);
@@ -55,38 +56,49 @@ export async function POST(request: Request, context: RouteContext<"/api/upload-
       return !bundle || bundle.keyVersion !== recipient.keyVersion || bundle.publicKeyFingerprint !== recipient.publicKeyFingerprint;
     })) return json({ error: { code: "RECIPIENT_KEY_CHANGED", message: "A recipient key changed. Prepare again." } }, { status: 409 });
 
-    const batchId = crypto.randomUUID();
-    const rows = input.recipients.map((recipient) => ({
-      id: crypto.randomUUID(), batchId, groupId, senderClerkUserId: user.userId,
-      recipientClerkUserId: recipient.status === "READY" ? recipient.clerkUserId : null,
-      recipientEmailNormalized: normalizeEmail(recipient.email), permission: input.permission,
-      status: recipient.status === "READY" ? "ACTIVE" as const : "AWAITING_RECIPIENT_KEY" as const,
+    const db = getDb();
+    const recipients = input.recipients.map(recipient => ({
+      id: crypto.randomUUID(), email: normalizeEmail(recipient.email),
+      userId: recipient.status === "READY" ? recipient.clerkUserId : null,
+      status: recipient.status === "READY" ? "ACTIVE" : "AWAITING_RECIPIENT_KEY",
+      keyVersion: recipient.status === "READY" ? recipient.keyVersion : null,
+      envelopes: recipient.status === "READY" ? recipient.envelopes : [],
     }));
-    const envelopes = ready.flatMap((recipient) => recipient.envelopes.map((envelope) => ({
-      documentId: envelope.documentId,
-      clerkUserId: recipient.clerkUserId,
-      wrappedFileKey: envelope.wrappedFileKey,
-      keyVersion: recipient.keyVersion,
-    })));
-    if (envelopes.length) {
-      await getDb().batch([
-        getDb().insert(shareBatches).values({ id: batchId, groupId, senderClerkUserId: user.userId, permission: input.permission, availableFrom, expiresAt }),
-        getDb().insert(shares).values(rows),
-        getDb().insert(documentKeyEnvelopes).values(envelopes).onConflictDoNothing(),
-      ]);
-    } else {
-      await getDb().batch([
-        getDb().insert(shareBatches).values({ id: batchId, groupId, senderClerkUserId: user.userId, permission: input.permission, availableFrom, expiresAt }),
-        getDb().insert(shares).values(rows),
-      ]);
-    }
-    const appUrl = getAppEnv().APP_URL.replace(/\/$/, "");
-    return json({ batchId, shares: rows.map((row) => ({
-      shareId: row.id, recipientEmail: row.recipientEmailNormalized, status: row.status,
-      shareUrl: row.status === "ACTIVE" ? `${appUrl}/share/${row.id}` : null,
-    })) }, { status: 201 });
+    const results = await db.batch([
+      db.select({ id: uploadGroups.id }).from(uploadGroups).where(and(eq(uploadGroups.id, groupId), eq(uploadGroups.ownerClerkUserId, user.userId))).for("update"),
+      db.execute(sql`INSERT INTO share_batches (id, group_id, sender_clerk_user_id, permission, available_from, expires_at)
+        SELECT ${crypto.randomUUID()}::uuid, id, owner_clerk_user_id, ${input.permission}::share_permission, ${availableFrom?.toISOString() ?? null}::timestamptz, ${expiresAt?.toISOString() ?? null}::timestamptz
+        FROM upload_groups WHERE id = ${groupId}::uuid AND owner_clerk_user_id = ${user.userId} AND status = 'READY'
+        ON CONFLICT (group_id) DO NOTHING`),
+      db.execute(appendRecipientsSql(groupId, user.userId, recipients)),
+    ]);
+    const outcome = results[2].rows[0] as { allowed: boolean; available: boolean; emailing: boolean };
+    if (!outcome.available) return json({ error: { code: "NOT_FOUND", message: "Ready upload group not found." } }, { status: 404 });
+    if (outcome.emailing) return json({ error: { code: "EMAIL_IN_PROGRESS", message: "An email request is in progress. Retry adding recipients shortly." } }, { status: 409 });
+    if (!outcome.allowed) return json({ error: { code: "RECIPIENT_LIMIT", message: "This group can have at most 100 recipients, including existing links." } }, { status: 409 });
+    return json(await loadLinks(groupId), { status: 200 });
   } catch (error) {
     if (error instanceof ZodError) return json({ error: { code: "INVALID_REQUEST", message: "The share request is invalid." } }, { status: 400 });
     return safeRouteError(error);
   }
+}
+
+async function loadLinks(groupId: string) {
+  const [batch] = await getDb().select().from(shareBatches).where(eq(shareBatches.groupId, groupId)).limit(1);
+  if (!batch) return { batchId: null, shares: [] };
+  const rows = await getDb().select().from(shares).where(eq(shares.batchId, batch.id));
+  const appUrl = getAppEnv().APP_URL.replace(/\/$/, "");
+  return { batchId: batch.id, emailAttemptId: batch.emailStatus === "SENDING" || batch.emailStatus === "FAILED" ? batch.emailAttemptId : null, permission: batch.permission, availableFrom: batch.availableFrom, expiresAt: batch.expiresAt,
+    shares: rows.map(row => ({ shareId: row.id, recipientEmail: row.recipientEmailNormalized, status: row.status,
+      shareUrl: row.status === "ACTIVE" ? `${appUrl}/share/${row.id}` : null })) };
+}
+
+export async function GET(_request: Request, context: RouteContext<"/api/upload-groups/[groupId]/shares">) {
+  try {
+    const user = await requireVerifiedUser();
+    const groupId = requireUuid((await context.params).groupId);
+    const [group] = await getDb().select({ id: uploadGroups.id }).from(uploadGroups).where(and(eq(uploadGroups.id, groupId), eq(uploadGroups.ownerClerkUserId, user.userId), eq(uploadGroups.status, "READY"))).limit(1);
+    if (!group) return json({ error: { code: "NOT_FOUND", message: "Ready upload group not found." } }, { status: 404 });
+    return json(await loadLinks(groupId));
+  } catch (error) { return safeRouteError(error); }
 }

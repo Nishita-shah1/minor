@@ -1,0 +1,11 @@
+{
+  "checks": [
+    "create opens popup; copy returns persisted link",
+    "dismissed popup reopens same link",
+    "reload loads persisted links",
+    "append keeps Alice link and adds Bob in same batch",
+    "explicit resend uses new attempt; dialog remains available"
+  ],
+  "errors": [],
+  "scope": "Component with mocked services; no real email"
+}
