@@ -1,6 +1,8 @@
+import { auth } from "@clerk/nextjs/server";
 import { ComingSoonPage } from "@/components/dashboard/coming-soon-page";
 
-export default function DashboardPage() {
+export default async function DashboardPage() {
+  await auth.protect({ unauthenticatedUrl: "/sign-in" });
   return (
     <ComingSoonPage
       label="Dashboard"

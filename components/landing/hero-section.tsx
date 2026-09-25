@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { FileLock2 } from "lucide-react";
 
@@ -8,25 +8,33 @@ export function HeroSection() {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [audioOn, setAudioOn] = useState(false);
 
-  const enableAudio = useCallback(() => {
+  const [playbackFailed, setPlaybackFailed] = useState(false);
+
+  const play = useCallback(async (withAudio: boolean) => {
     const video = videoRef.current;
-    if (!video || audioOn) return;
-    video.muted = false;
-    void video.play();
-    setAudioOn(true);
-  }, [audioOn]);
+    if (!video) return;
+    if (video.error) video.load();
+    video.muted = !withAudio;
+    try {
+      await video.play();
+      setAudioOn(withAudio);
+      setPlaybackFailed(false);
+    } catch {
+      video.muted = true;
+      setAudioOn(false);
+      setPlaybackFailed(true);
+    }
+  }, []);
+
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+    video.muted = true;
+    void video.play().catch(() => setPlaybackFailed(true));
+  }, []);
 
   return (
-    <section
-      className="relative h-svh w-full overflow-hidden"
-      onClick={enableAudio}
-      onKeyDown={(event) => {
-        if (event.key === "Enter" || event.key === " ") enableAudio();
-      }}
-      role="button"
-      tabIndex={0}
-      aria-label="Enable video audio"
-    >
+    <section className="relative h-svh w-full overflow-hidden">
       <video
         ref={videoRef}
         autoPlay
@@ -34,17 +42,27 @@ export function HeroSection() {
         loop
         playsInline
         preload="auto"
+        poster="/video/echoleaks-hero-poster.jpg"
+        onError={() => setPlaybackFailed(true)}
         className="pointer-events-none absolute inset-0 h-full w-full object-cover"
       >
+        <source src="/video/echoleaks-hero.webm" type="video/webm" />
         <source
           src="/video/EchoLeaks-Hero-Section-Video.mp4"
           type="video/mp4"
         />
       </video>
 
-      {!audioOn && (
-        <p className="pointer-events-none absolute bottom-6 left-1/2 z-20 -translate-x-1/2 text-xs tracking-wide text-black/45">
-          Tap anywhere for sound
+      <button
+        type="button"
+        onClick={() => void play(!audioOn)}
+        className="absolute bottom-16 left-5 z-20 rounded-full border-2 border-black bg-primary px-4 py-2 text-sm font-semibold shadow-md"
+      >
+        {playbackFailed ? "Retry video" : audioOn ? "Mute video" : "Play with sound"}
+      </button>
+      {playbackFailed && (
+        <p role="status" className="absolute bottom-28 left-5 z-20 rounded-xl border-2 border-black bg-background p-3 text-sm">
+          Video playback is unavailable. Try again or reload the page.
         </p>
       )}
 
