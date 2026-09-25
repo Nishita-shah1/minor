@@ -84,6 +84,12 @@ try {
   await page.getByRole("button",{name:"Analyze screenshot",exact:true}).click();
   await expect(page.getByTestId("scan-result")).toContainText("NO_RELIABLE_MARK");
   report.checks.push({name:"unmarked-ui-abstention",pass:true});
+  const narrow=await page.evaluate(()=>{const c=document.createElement("canvas");c.width=300;c.height=1024;return c.toDataURL().split(",")[1];});
+  await page.getByLabel("Screenshot image",{exact:true}).setInputFiles({name:"narrow-crop.png",mimeType:"image/png",buffer:Buffer.from(narrow,"base64")});
+  await expect(page.getByRole("status")).toContainText("Screenshot ready");
+  await page.getByRole("button",{name:"Analyze screenshot",exact:true}).click();
+  await expect(page.getByTestId("scan-result")).toContainText("INCONCLUSIVE");
+  report.checks.push({name:"narrow-crop-loads-and-abstains-without-alignment",pass:true});
   if(requests.some(r=>!r.url.startsWith(origin+"/")||r.method!=="GET"))throw Error("Unexpected network request in local UI harness");
   report.checks.push({name:"local-assets-only-no-image-posts",pass:true,requests:requests.length});
   if(report.errors.length)throw Error("Browser errors recorded");

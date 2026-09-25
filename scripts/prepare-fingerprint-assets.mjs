@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { readFile, writeFile, mkdir, copyFile, rename, rm } from "node:fs/promises";
+import { readFile, writeFile, mkdir, copyFile, rename, rm, cp } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -40,3 +40,12 @@ for (const file of ["ort-wasm-simd-threaded.asyncify.mjs", "ort-wasm-simd-thread
 await copyFile(path.join(root, "licenses/trustmark/LICENSE"), path.join(modelDir, "LICENSE"));
 await copyFile(path.join(root, "licenses/onnxruntime/LICENSE"), path.join(runtimeDir, "LICENSE"));
 console.log("Experimental assets ready; this does not qualify the profile.");
+
+const pdf = JSON.parse(await readFile(path.join(root, "node_modules/pdfjs-dist/package.json"), "utf8"));
+if (pdf.version !== "6.3.289") throw new Error("PDF renderer version does not match the experiment");
+const pdfDir = path.join(root, "public/fingerprint-assets/pdfjs-6.3.289");
+await mkdir(pdfDir, { recursive: true });
+await copyFile(path.join(root, "node_modules/pdfjs-dist/build/pdf.worker.min.mjs"), path.join(pdfDir, "pdf.worker.min.mjs"));
+for (const directory of ["standard_fonts", "cmaps", "wasm"]) await cp(path.join(root, "node_modules/pdfjs-dist", directory), path.join(pdfDir, directory), { recursive: true });
+await copyFile(path.join(root, "node_modules/pdfjs-dist/LICENSE"), path.join(pdfDir, "LICENSE"));
+console.log("Pinned PDF.js worker, fonts, cmaps and WASM assets prepared.");

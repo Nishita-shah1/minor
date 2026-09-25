@@ -17,7 +17,8 @@
     "db:verify": "node scripts/verify-database.mjs",
     "fingerprint:smoke": "node scripts/fingerprint-smoke.mjs",
     "fingerprint:assets": "node scripts/prepare-fingerprint-assets.mjs",
-    "fingerprint:scan-ui": "node scripts/fingerprint-scan-ui.mjs"
+    "fingerprint:scan-ui": "node scripts/fingerprint-scan-ui.mjs",
+    "fingerprint:qualify": "node scripts/fingerprint-qualification.mjs"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1126.0",
@@ -39,7 +40,7 @@
     "next": "16.3.3",
     "next-themes": "^0.4.6",
     "onnxruntime-web": "1.30.0",
-    "pdfjs-dist": "^6.3.289",
+    "pdfjs-dist": "6.3.289",
     "radix-ui": "^1.6.7",
     "react": "19.2.8",
     "react-day-picker": "^10.0.1",

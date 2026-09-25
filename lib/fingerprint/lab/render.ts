@@ -10,12 +10,13 @@ function surface(width: number, height: number) {
   return { canvas, context };
 }
 
-export async function renderLocalFile(file: File): Promise<Pixels> {
+export async function renderLocalFile(file: File, options: { evidence?: boolean } = {}): Promise<Pixels> {
   if (file.size > 25 * 1024 * 1024) throw new Error("Lab files must be at most 25 MiB");
   if (file.type === "application/pdf" || /\.pdf$/i.test(file.name)) {
     const pdfjs = await import("pdfjs-dist");
-    pdfjs.GlobalWorkerOptions.workerSrc = new URL("pdfjs-dist/build/pdf.worker.min.mjs", import.meta.url).toString();
-    const loading = pdfjs.getDocument({ data: await file.arrayBuffer() });
+    const assets = "/fingerprint-assets/pdfjs-6.3.289/";
+    pdfjs.GlobalWorkerOptions.workerSrc = `${assets}pdf.worker.min.mjs`;
+    const loading = pdfjs.getDocument({ data: await file.arrayBuffer(), useSystemFonts: false, standardFontDataUrl: `${assets}standard_fonts/`, cMapUrl: `${assets}cmaps/`, cMapPacked: true, wasmUrl: `${assets}wasm/` });
     try {
       const document = await loading.promise;
       const page = await document.getPage(1);
@@ -38,7 +39,9 @@ export async function renderLocalFile(file: File): Promise<Pixels> {
     try {
       context.drawImage(bitmap, 0, 0);
       const pixels = context.getImageData(0, 0, canvas.width, canvas.height);
-      validatePixels(pixels);
+      // Evidence crops may be narrower than model input; alignment reconstructs
+      // them before inference. Keep strict dimensions for original/encoding input.
+      if (!options.evidence) validatePixels(pixels);
       return pixels;
     } finally { canvas.width = canvas.height = 0; }
   } finally { bitmap.close(); }

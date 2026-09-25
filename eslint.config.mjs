@@ -14,6 +14,7 @@ const eslintConfig = defineConfig([
     "next-env.d.ts",
     "public/fingerprint-assets/**",
     "test-results/**",
+    ".fingerprint-results/**",
     "playwright-report/**",
   ]),
 ]);

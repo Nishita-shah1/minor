@@ -45,3 +45,6 @@ next-env.d.ts
 /public/fingerprint-assets/
 /test-results/
 /playwright-report/
+
+# Long-running qualification survives Playwright output cleanup
+/.fingerprint-results/

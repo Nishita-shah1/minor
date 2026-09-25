@@ -58,7 +58,7 @@ export function ScanWorkspace() {
     else { setOriginal(null); setOriginalPoints([]); setMarked(null); setTestId(""); }
     await run(async current => {
       setMessage("Reading your file locally…");
-      const pixels = await renderLocalFile(file);
+      const pixels = await renderLocalFile(file, { evidence: target === "evidence" });
       if (!current()) return;
       if (target === "original") setOriginal(pixels); else setEvidence(pixels);
       setMessage(target === "original" ? "Original loaded locally. PDF input currently uses page 1." : "Screenshot ready. Analyze to check for a compatible fingerprint.");
