@@ -1,0 +1,22 @@
+{
+  "profileId": "trustmark-q-lab-v1",
+  "qualified": false,
+  "upstreamCommit": "2ecb73ad28d1a3f66ac9dc19e1b667711f14314f",
+  "onnxRuntimeVersion": "1.30.0",
+  "ecc": "BCH_SUPER",
+  "preprocessing": "rgb-white-alpha-half-pixel-bilinear-nchw-minus1-plus1-v1",
+  "compositor": "rust-style-residual-clamp-0.2-bilinear-round-uint8-v1",
+  "modelBaseUrl": "https://cai-watermark.adobe.net/watermarking/trustmark-models/",
+  "models": {
+    "encoder": {
+      "file": "encoder_Q.onnx",
+      "bytes": 17312208,
+      "sha256": "19b3d1b25836130ffd78775a8f61539f993375d1823ef0e59ba5b8dffb4f892d"
+    },
+    "decoder": {
+      "file": "decoder_Q.onnx",
+      "bytes": 47401222,
+      "sha256": "ee3268f057c9dabef680e169302f5973d0589feea86189ed229a896cc3aa88df"
+    }
+  }
+}

@@ -4,11 +4,11 @@
 
 **Date:** 2026-09-25
 
-**Status:** Conversational design approved; replacement written-spec review pending. The user requested execution of this plan, including its separate written-spec and implementation-plan reviews before coding.
+**Status:** The user subsequently explicitly authorized starting code changes. Ticket 1 implementation is underway; experimental recovery gates still block dependent integration.
 
 **Supersession:** This document replaces the earlier classical brightness-pattern design at this canonical path. Its public seeds, residual candidate-ranking detector, classical strength levels, no-ML constraint, optional camera work, and deferred XLSX scope are no longer active requirements. There is one active fingerprint specification.
 
-**Evidence status:** No TrustMark implementation, passing profile, recovery result, or physical-camera qualification exists yet.
+**Evidence status:** An isolated, unqualified TrustMark worker and development lab exist. Initial WebGPU tuning smoke scans failed recovery. See `docs/fingerprinting/ticket-1-progress.md`; no passing profile or physical-camera qualification exists.
 
 **Objective:** Build encrypted, read-only document sharing that lets an owner investigate which recipient’s displayed copy is consistent with a supplied screenshot or supported phone photograph.
 
