@@ -3,6 +3,7 @@ import { LockKeyhole } from "lucide-react";
 import Link from "next/link";
 import { SecureShareClient } from "@/components/share/secure-share-client";
 import { InvitationCapture } from "@/components/share/invitation-capture";
+import { ShareAccount } from "@/components/share/share-account";
 
 export default async function SharePage({ params }: { params: Promise<{ shareId: string }> }) {
   const { shareId } = await params;
@@ -25,5 +26,5 @@ export default async function SharePage({ params }: { params: Promise<{ shareId:
       </main></>
     );
   }
-  return <><InvitationCapture shareId={shareId} /><SecureShareClient shareId={shareId} /></>;
+  return <><InvitationCapture shareId={shareId} /><ShareAccount /><SecureShareClient shareId={shareId} /></>;
 }
