@@ -29,6 +29,8 @@ The authorized recipient's browser necessarily sees plaintext before marking. Th
 
 Routes: `/` is the public landing page (`components/landing/hero-section.tsx`, animated WebP visual with optional audio). `/dashboard/upload` encrypts and shares, `/dashboard/history` manages owned groups/links, `/dashboard/scan` investigates screenshots, `/dashboard/profile` manages the account and key vault, `/share/[shareId]` is the recipient entry point, and `/fingerprint-lab` is an experiment. Dashboard pages call `auth.protect`; `proxy.ts` initializes Clerk rather than being the sole authorization boundary. APIs under `app/api/` authorize their own requests and send private responses with `no-store`.
 
+The app is installable through `app/manifest.ts`, the icons in `public/pwa/`, and `public/sw.js`. The landing install card uses the browser prompt where available and manual steps in supported browsers without an offered prompt. The service worker caches only the public offline page and icons; all navigation stays network-first and falls back to `public/offline.html` when disconnected. Account, share, API, and decrypted document data are never stored in its cache, so those workflows require connectivity.
+
 ## Keys, encrypted files, and records
 
 `hooks/use-key-vault.ts` and `components/crypto/key-vault-dialog.tsx` manage a user RSA keypair. The private key is available locally as a nonextractable IndexedDB key; an Argon2id-encrypted private-key backup and public key live in `user_key_bundles`. The server never uses the private key to decrypt files.

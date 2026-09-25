@@ -13,6 +13,14 @@ const nextConfig: NextConfig = {
       { key: "Content-Security-Policy", value: "frame-ancestors 'none'; object-src 'none'; base-uri 'self'" },
     ];
     return [
+      {
+        source: "/sw.js",
+        headers: [
+          { key: "Content-Type", value: "application/javascript; charset=utf-8" },
+          { key: "Cache-Control", value: "no-cache, no-store, must-revalidate" },
+          { key: "Content-Security-Policy", value: "default-src 'self'; script-src 'self'" },
+        ],
+      },
       { source: "/share/:path*", headers: secureHeaders },
       { source: "/api/shares/:path*", headers: secureHeaders },
     ];

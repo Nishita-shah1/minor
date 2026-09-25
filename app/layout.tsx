@@ -3,6 +3,7 @@ import { shadcn } from "@clerk/ui/themes";
 import type { Metadata } from "next";
 import { Archivo_Black, Space_Grotesk } from "next/font/google";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { ServiceWorkerRegistration } from "@/components/pwa/service-worker-registration";
 import "./globals.css";
 
 const archivoBlack = Archivo_Black({
@@ -22,10 +23,13 @@ export const metadata: Metadata = {
   title: "EchoLeaks — Share confidential files. Know when they leak.",
   description:
     "Protect sensitive documents with invisible leak attribution and trace leaked content back to its source.",
+  applicationName: "EchoLeaks",
+  manifest: "/manifest.webmanifest",
+  appleWebApp: { capable: true, title: "EchoLeaks", statusBarStyle: "default" },
   icons: {
     icon: "/io.github.lo2dev.Echo.svg",
     shortcut: "/io.github.lo2dev.Echo.svg",
-    apple: "/io.github.lo2dev.Echo.svg",
+    apple: "/pwa/apple-touch-icon.png",
   },
 };
 
@@ -47,6 +51,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
             },
           }}
         >
+          <ServiceWorkerRegistration />
           <TooltipProvider>{children}</TooltipProvider>
         </ClerkProvider>
       </body>

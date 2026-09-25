@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { FileLock2 } from "lucide-react";
+import { InstallPrompt } from "@/components/pwa/install-prompt";
 
 export function HeroSection() {
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -11,6 +12,7 @@ export function HeroSection() {
   const [audioOn, setAudioOn] = useState(false);
 
   const [playbackFailed, setPlaybackFailed] = useState(false);
+  const [installVisible, setInstallVisible] = useState(false);
 
   const play = useCallback(async (withAudio: boolean) => {
     const video = videoRef.current;
@@ -61,15 +63,16 @@ export function HeroSection() {
       </video>
 
       <Image key={previewVersion} src="/video/echoleaks-hero-preview.webp" alt="Animated EchoLeaks introduction" fill unoptimized priority className="pointer-events-none object-cover" />
+      <InstallPrompt onVisibilityChange={setInstallVisible} />
       <button
         type="button"
         onClick={() => void play(!audioOn)}
-        className="absolute bottom-16 left-5 z-20 rounded-full border-2 border-black bg-primary px-4 py-2 text-sm font-semibold shadow-md"
+        className="absolute left-5 top-36 z-20 rounded-full border-2 border-black bg-primary px-4 py-2 text-sm font-semibold shadow-md sm:top-auto sm:bottom-16"
       >
         {playbackFailed ? "Retry video" : audioOn ? "Mute video" : "Play with sound"}
       </button>
       {playbackFailed && (
-        <p role="status" className="absolute bottom-40 left-5 z-20 rounded-xl border-2 border-black bg-background p-3 text-sm">
+        <p role="status" className="absolute left-5 top-48 z-20 rounded-xl border-2 border-black bg-background p-3 text-sm sm:top-auto sm:bottom-40">
           Video playback is unavailable. Try again or reload the page.
         </p>
       )}
@@ -78,7 +81,7 @@ export function HeroSection() {
         EchoLeaks
       </h1>
 
-      <div className="pointer-events-none absolute right-0 bottom-6 z-10 p-5 sm:bottom-8 sm:p-7 md:bottom-10 md:p-9">
+      <div className={`pointer-events-none absolute right-0 z-10 p-5 sm:bottom-8 sm:p-7 md:bottom-10 md:p-9 ${installVisible ? "bottom-[12rem]" : "bottom-6"}`}>
         <div className="pointer-events-auto flex w-[min(calc(100vw-2.5rem),20rem)] flex-col gap-2 rounded-2xl border-2 border-black bg-background p-4 text-left shadow-md sm:w-[22rem]">
           <div className="space-y-1.5">
             <p className="hero-animate hero-animate-2 text-sm leading-snug font-semibold tracking-tight text-black">
