@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ScanLine, ShieldCheck, Upload, FlaskConical } from "lucide-react";
 import { BrowserFingerprintEngine } from "@/lib/fingerprint/worker-client";
 import type { Pixels } from "@/lib/fingerprint/types";
@@ -17,7 +17,7 @@ const field = "block w-full rounded-lg border-2 border-black bg-background p-3 t
 export function ScanWorkspace() {
   const [selectArea, setSelectArea] = useState(false);
   const [areaPoints, setAreaPoints] = useState<Point[]>([]);
-  const [lookupOpen, setLookupOpen] = useState(true);
+  const [lookupReady, setLookupReady] = useState(false);
   const [candidates, setCandidates] = useState<LocalCandidate[]>([]);
   const engine = useRef<BrowserFingerprintEngine | null>(null);
   const generation = useRef(0);
@@ -46,6 +46,11 @@ export function ScanWorkspace() {
     return () => { epoch.current++; localEngine.cancel(); };
   }, []);
 
+  const updateCandidates = useCallback((value: LocalCandidate[], ready: boolean) => {
+    generation.current++; engine.current?.cancel(); setBusy(false);
+    setCandidates(value); setLookupReady(ready); setResult(null); setDuration(null);
+  }, []);
+
   function clearResult() { setResult(null); setDuration(null); }
   async function run(action: (isCurrent: () => boolean) => Promise<void>) {
     const epoch = ++generation.current;
@@ -59,7 +64,7 @@ export function ScanWorkspace() {
     originalFile.current = null; setPage(1); setPageCount(1); setResizeNotice("");
     setOriginal(null); setEvidence(null); setMarked(null); setTestId(""); setAligned(false);
     setOriginalPoints([]); setEvidencePoints([]); clearResult(); setBusy(false); setResetKey(k => k + 1);
-    setCandidates([]); setLookupOpen(false); setMessage("Cleared local images and stopped the worker.");
+    setMessage("Cleared local images and stopped the worker.");
   }
   async function load(file: File, target: "original" | "evidence", pageNumber = 1) {
     if (target === "evidence" && !["image/png", "image/jpeg"].includes(file.type)) { setEvidence(null); setEvidencePoints([]); setAligned(false); setMessage("Choose a PNG or JPEG image."); clearResult(); return; }
@@ -78,7 +83,7 @@ export function ScanWorkspace() {
     });
   }
   async function analyze() {
-    if (!evidence || !engine.current) return;
+    if (!evidence || !engine.current || !lookupReady) return;
     await run(async current => {
       setMessage("Checking WebGPU and preparing the local decoder…");
       const runtime = await engine.current!.initialize("decode");
@@ -90,7 +95,7 @@ export function ScanWorkspace() {
         candidates, decode: pixels => engine.current!.decode(pixels) });
       if (!current()) return;
       setResult(response); setDuration(performance.now() - start);
-      setMessage(response.status === "CANDIDATE_MATCH" ? "A matching distributed copy was found. This does not identify who intentionally disclosed it." : response.status === "UNKNOWN_MARK" ? (candidates.length ? "Compatible fingerprint recovered, but it does not match the loaded recipient copies." : "Fingerprint recovered. Select the original shared document above, unlock your owner keys, load recipient copies, then analyze again to identify the matching copy.")
+      setMessage(response.status === "CANDIDATE_MATCH" ? "A matching distributed copy was found. This does not identify who intentionally disclosed it." : response.status === "UNKNOWN_MARK" ? (candidates.length ? "Compatible fingerprint recovered, but it does not match the loaded recipient copies." : "Fingerprint recovered, but your account has no fingerprinted recipient copies to match it against.")
         : response.status === "NO_RELIABLE_MARK" ? "No reliable fingerprint was recovered. No recipient has been identified."
         : `Inconclusive — ${response.reason?.replaceAll("_", " ").toLowerCase() ?? "unable to establish a reliable result"}.`);
     });
@@ -144,8 +149,7 @@ export function ScanWorkspace() {
       <p className="max-w-3xl text-lg text-muted-foreground">Check a screenshot for a compatible fingerprint, entirely in your browser.</p>
       <div className="rounded-xl border-2 border-black bg-primary/20 p-4 text-sm"><strong>Experimental local testing.</strong> Local fingerprint check. Recipient lookup requires owner keys and newly fingerprinted shares. Crops and phone photos are unverified.</div>
     </header>
-    <button className={`${button} bg-card`} onClick={() => { setLookupOpen(value => !value); setCandidates([]); clearResult(); }}>{lookupOpen ? "Hide recipient lookup" : "Find the recipient copy"}</button>
-    {lookupOpen && <CopyLookup onChange={value => {setCandidates(value); clearResult();}} />}
+    <CopyLookup onChange={updateCandidates} />
     <div className="grid gap-7 xl:grid-cols-[1.2fr_1fr]">
       <section className={panel}>
         <h2 className="flex items-center gap-3 font-head text-2xl"><Upload aria-hidden="true" /> Add a screenshot</h2>
@@ -160,7 +164,7 @@ export function ScanWorkspace() {
           {selectArea && <><p className="text-sm">Click the top-left and bottom-right corners of the document in your full-screen screenshot.</p><button className={button} disabled={areaPoints.length !== 2 || busy} onClick={useSelectedArea}>Use selected area</button></>}
         </>}
         <div className="flex flex-wrap gap-3">
-          <button className={button} disabled={busy || !evidence || !geometryReady} onClick={() => void analyze()}><ScanLine aria-hidden="true" size={18} />{busy ? "Processing…" : "Analyze screenshot"}</button>
+          <button className={button} disabled={busy || !evidence || !geometryReady || !lookupReady} onClick={() => void analyze()}><ScanLine aria-hidden="true" size={18} />{busy ? "Processing…" : "Analyze screenshot"}</button>
           <button className={`${button} bg-card`} onClick={reset}>Cancel / clear images</button>
         </div>
       </section>
@@ -169,7 +173,7 @@ export function ScanWorkspace() {
         <p role="status" aria-live="polite" className="rounded-lg border-2 border-black bg-background p-4">{message}</p>
         {result && <div className="space-y-3" data-testid="scan-result">
           <p className="font-mono text-sm font-bold">{result.status}</p>
-          {result.status === "CANDIDATE_MATCH" && <div className="rounded-xl border-2 border-black bg-primary/20 p-4 space-y-2"><p className="text-xl font-bold">{candidates.find(candidate => candidate.id === result.candidateId)?.recipientName || "Name unavailable"}</p><p className="break-all">{candidates.find(candidate => candidate.id === result.candidateId)?.recipientEmail}</p><p className="text-sm break-all">Share ID: {result.candidateId}</p></div>}
+          {result.status === "CANDIDATE_MATCH" && <div className="rounded-xl border-2 border-black bg-primary/20 p-4 space-y-2"><p className="text-xl font-bold">{candidates.find(candidate => candidate.id === result.candidateId)?.recipientName || "Name unavailable"}</p><p className="break-all">{candidates.find(candidate => candidate.id === result.candidateId)?.recipientEmail}</p><p className="text-sm break-all">Share ID: {candidates.find(candidate => candidate.id === result.candidateId)?.shareId}</p></div>}
           {result.identifier && <div><p className="text-sm">Recovered fingerprint ID</p><output data-testid="recovered-identifier" className="break-all font-mono text-2xl font-bold">{result.identifier}</output></div>}
           <p className="text-sm text-muted-foreground">{result.attempts} decode attempt{result.attempts === 1 ? "" : "s"} · {duration?.toFixed(0)} ms{result.coverage !== null ? ` · ${(result.coverage * 100).toFixed(1)}% observed coverage` : ""}</p>
           <p className="text-sm">A recovered ID does not prove who took a screenshot, who disclosed it, or that the image is authentic.</p>
