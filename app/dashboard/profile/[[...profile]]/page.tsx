@@ -1,6 +1,8 @@
+import { auth } from "@clerk/nextjs/server";
 import { UserProfile } from "@clerk/nextjs";
 
-export default function ProfilePage() {
+export default async function ProfilePage() {
+  await auth.protect({ unauthenticatedUrl: "/sign-in" });
   return (
     <section className="min-h-[calc(100svh-4rem)] w-full overflow-x-auto p-4 sm:p-6 md:min-h-svh lg:p-8">
       <UserProfile

@@ -1,0 +1,81 @@
+{
+  "strength": 0.8,
+  "browserArgs": [
+    "--enable-unsafe-webgpu",
+    "--enable-features=Vulkan",
+    "--use-angle=vulkan",
+    "--disable-vulkan-surface"
+  ],
+  "kind": "tuning-smoke-only",
+  "qualified": false,
+  "runtime": {
+    "browser": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Safari/537.36",
+    "adapter": {
+      "vendor": "amd",
+      "architecture": "rdna-3",
+      "device": "",
+      "description": ""
+    },
+    "shaderF16": true
+  },
+  "cases": [
+    {
+      "name": "native",
+      "width": 768,
+      "height": 1024,
+      "ms": 353.09999999962747,
+      "status": "NO_RELIABLE_MARK",
+      "identifier": null,
+      "correctedBits": null,
+      "correct": false
+    },
+    {
+      "name": "resize75",
+      "width": 576,
+      "height": 768,
+      "ms": 52.80000000074506,
+      "status": "NO_RELIABLE_MARK",
+      "identifier": null,
+      "correctedBits": null,
+      "correct": false
+    },
+    {
+      "name": "resize50",
+      "width": 384,
+      "height": 512,
+      "ms": 40.70000000111759,
+      "status": "NO_RELIABLE_MARK",
+      "identifier": null,
+      "correctedBits": null,
+      "correct": false
+    },
+    {
+      "name": "jpeg85",
+      "width": 768,
+      "height": 1024,
+      "ms": 32.19999999925494,
+      "status": "NO_RELIABLE_MARK",
+      "identifier": null,
+      "correctedBits": null,
+      "correct": false
+    },
+    {
+      "name": "resize50-jpeg85",
+      "width": 384,
+      "height": 512,
+      "ms": 26.90000000037253,
+      "status": "NO_RELIABLE_MARK",
+      "identifier": null,
+      "correctedBits": null,
+      "correct": false
+    },
+    {
+      "name": "unmarked",
+      "status": "NO_RELIABLE_MARK",
+      "identifier": null,
+      "correct": true
+    }
+  ],
+  "error": null,
+  "encodeMs": 842.866476
+}

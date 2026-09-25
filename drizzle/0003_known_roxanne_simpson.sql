@@ -1,0 +1,1 @@
+ALTER TABLE "shares" ADD COLUMN "recipient_name" text;

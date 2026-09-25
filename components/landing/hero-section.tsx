@@ -1,50 +1,76 @@
 "use client";
 
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { FileLock2 } from "lucide-react";
 
 export function HeroSection() {
   const videoRef = useRef<HTMLVideoElement>(null);
+  const [previewVersion, setPreviewVersion] = useState(0);
   const [audioOn, setAudioOn] = useState(false);
 
-  const enableAudio = useCallback(() => {
+  const [playbackFailed, setPlaybackFailed] = useState(false);
+
+  const play = useCallback(async (withAudio: boolean) => {
     const video = videoRef.current;
-    if (!video || audioOn) return;
-    video.muted = false;
-    void video.play();
-    setAudioOn(true);
-  }, [audioOn]);
+    if (!video) return;
+    if (withAudio) {
+      video.currentTime = 0;
+      setPreviewVersion((version) => version + 1);
+    }
+    if (video.error) video.load();
+    video.muted = !withAudio;
+    try {
+      await video.play();
+      setAudioOn(withAudio);
+      setPlaybackFailed(false);
+    } catch {
+      video.muted = true;
+      setAudioOn(false);
+      setPlaybackFailed(true);
+    }
+  }, []);
+
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+    video.muted = true;
+    // The silent animated preview is the default on all devices.
+    // Start native video only after an explicit request for sound.
+  }, []);
 
   return (
-    <section
-      className="relative h-svh w-full overflow-hidden"
-      onClick={enableAudio}
-      onKeyDown={(event) => {
-        if (event.key === "Enter" || event.key === " ") enableAudio();
-      }}
-      role="button"
-      tabIndex={0}
-      aria-label="Enable video audio"
-    >
+    <section className="relative isolate h-svh w-full overflow-hidden">
       <video
         ref={videoRef}
-        autoPlay
         muted
         loop
         playsInline
         preload="auto"
-        className="pointer-events-none absolute inset-0 h-full w-full object-cover"
+        poster="/video/echoleaks-hero-poster.jpg"
+        onError={() => setPlaybackFailed(true)}
+        aria-hidden="true"
+        className="pointer-events-none invisible absolute inset-0 h-full w-full"
       >
+        <source src="/video/echoleaks-hero.webm" type="video/webm" />
         <source
           src="/video/EchoLeaks-Hero-Section-Video.mp4"
           type="video/mp4"
         />
       </video>
 
-      {!audioOn && (
-        <p className="pointer-events-none absolute bottom-6 left-1/2 z-20 -translate-x-1/2 text-xs tracking-wide text-black/45">
-          Tap anywhere for sound
+      <Image key={previewVersion} src="/video/echoleaks-hero-preview.webp" alt="Animated EchoLeaks introduction" fill unoptimized priority className="pointer-events-none object-cover" />
+      <button
+        type="button"
+        onClick={() => void play(!audioOn)}
+        className="absolute bottom-16 left-5 z-20 rounded-full border-2 border-black bg-primary px-4 py-2 text-sm font-semibold shadow-md"
+      >
+        {playbackFailed ? "Retry video" : audioOn ? "Mute video" : "Play with sound"}
+      </button>
+      {playbackFailed && (
+        <p role="status" className="absolute bottom-40 left-5 z-20 rounded-xl border-2 border-black bg-background p-3 text-sm">
+          Video playback is unavailable. Try again or reload the page.
         </p>
       )}
 
@@ -53,7 +79,7 @@ export function HeroSection() {
       </h1>
 
       <div className="pointer-events-none absolute right-0 bottom-6 z-10 p-5 sm:bottom-8 sm:p-7 md:bottom-10 md:p-9">
-        <div className="pointer-events-auto flex w-[min(calc(100vw-2.5rem),20rem)] flex-col gap-2 text-left sm:w-[22rem]">
+        <div className="pointer-events-auto flex w-[min(calc(100vw-2.5rem),20rem)] flex-col gap-2 rounded-2xl border-2 border-black bg-background p-4 text-left shadow-md sm:w-[22rem]">
           <div className="space-y-1.5">
             <p className="hero-animate hero-animate-2 text-sm leading-snug font-semibold tracking-tight text-black">
               Share confidential files. Know when they leak.

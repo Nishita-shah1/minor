@@ -47,6 +47,7 @@ export type ShareAccessResponse = {
 };
 
 export type DocumentDownloadAccess = {
+  fingerprint?: { recipientWrappedKey: string; profileId: string };
   documentId: string;
   downloadUrl: string;
   wrappedFileKey: string;
@@ -54,6 +55,7 @@ export type DocumentDownloadAccess = {
 };
 
 export type PreparedRecipient = {
+  recipientName?: string | null;
   email: string;
   status: "READY" | "NOT_ENROLLED";
   clerkUserId?: string;

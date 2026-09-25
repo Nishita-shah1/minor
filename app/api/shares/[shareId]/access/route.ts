@@ -23,6 +23,12 @@ export async function GET(_request: Request, context: RouteContext<"/api/shares/
       .innerJoin(shareBatches, eq(shareBatches.id, shares.batchId))
       .where(eq(shares.id, shareId)).limit(1);
     if (!record) return forbidden();
+    if (record.shareStatus === "AWAITING_RECIPIENT_KEY" && record.groupStatus === "READY" &&
+      user.verifiedEmails.includes(record.recipientEmailNormalized)) {
+      if (record.expiresAt && record.expiresAt <= new Date())
+        return json({ error: { code: "EXPIRED", message: "This protected share has expired." } }, { status: 403 });
+      return json({ error: { code: "PENDING_INVITATION", message: "Set up secure access to claim this invitation." } }, { status: 409 });
+    }
     const decision = evaluateShareAccess({
       status: record.shareStatus,
       groupStatus: record.groupStatus,

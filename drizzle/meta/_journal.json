@@ -15,6 +15,27 @@
       "when": 1788583897846,
       "tag": "0001_tearful_betty_brant",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1790333958903,
+      "tag": "0002_cultured_karnak",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1790336936748,
+      "tag": "0003_known_roxanne_simpson",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1790339930307,
+      "tag": "0004_sweet_harpoon",
+      "breakpoints": true
     }
   ]
 }

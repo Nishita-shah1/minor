@@ -157,10 +157,14 @@ export const shares = pgTable(
       .references(() => uploadGroups.id, { onDelete: "cascade" }),
     senderClerkUserId: text("sender_clerk_user_id").notNull(),
     recipientClerkUserId: text("recipient_clerk_user_id"),
+    recipientName: text("recipient_name"),
     recipientEmailNormalized: text("recipient_email_normalized").notNull(),
     permission: permission("permission").notNull(),
     status: shareStatus("status").notNull(),
     providerMessageId: text("provider_message_id"),
+    emailStatus: emailStatus("email_status").notNull().default("NOT_REQUESTED"),
+    emailAttemptId: uuid("email_attempt_id"),
+    emailUpdatedAt: timestamp("email_updated_at", { withTimezone: true }),
     revokedAt: timestamp("revoked_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
@@ -184,3 +188,23 @@ export const accessEvents = pgTable(
   },
   (table) => [index("access_events_share_idx").on(table.shareId)],
 );
+
+export const copyFingerprints = pgTable("copy_fingerprints", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  documentId: uuid("document_id").notNull().references(() => documents.id, { onDelete: "cascade" }),
+  shareId: uuid("share_id").notNull().references(() => shares.id, { onDelete: "cascade" }),
+  ownerWrappedKey: text("owner_wrapped_key").notNull(),
+  recipientWrappedKey: text("recipient_wrapped_key").notNull(),
+  profileId: text("profile_id").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, table => [uniqueIndex("copy_fingerprints_document_share_idx").on(table.documentId, table.shareId)]);
+
+export const invitationGrants = pgTable("invitation_grants", {
+  shareId: uuid("share_id").primaryKey().references(() => shares.id, { onDelete: "cascade" }),
+  ciphertext: text("ciphertext").notNull(),
+  iv: text("iv").notNull(),
+  proof: text("proof").notNull(),
+  ownerWrappedSecret: text("owner_wrapped_secret").notNull(),
+  fingerprints: jsonb("fingerprints").$type<Array<{ documentId: string; ownerWrappedKey: string; profileId: string }>>().notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});

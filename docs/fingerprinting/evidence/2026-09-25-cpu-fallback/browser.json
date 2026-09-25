@@ -1,0 +1,13 @@
+{
+  "checks": [
+    "Both real PDF pages carry the same locally recoverable identifier",
+    "Fullscreen exit covers marked content",
+    {
+      "name": "3072x1920 evidence accepted with resize notice",
+      "width": 2590,
+      "height": 1619,
+      "notice": "3072 × 1920 -> 2590 × 1619"
+    }
+  ],
+  "errors": []
+}

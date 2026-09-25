@@ -10,6 +10,13 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 
 # EchoLeaks agent rules
 
+## Start here
+
+- Read `ARCHITECTURE.md` for the current data flows, trust boundaries, code map, and known gaps. `memory/memory.md` is a short status snapshot. Treat older plans and experiment logs as historical evidence; confirm behavior in current code before changing it.
+- Keep browser-local document decryption, invitation-grant decryption, TrustMark encoding, and screenshot decoding local. Server routes authorize access and store ciphertext, encrypted key envelopes, and share metadata. Never add a server-side plaintext or screenshot-analysis path by accident.
+- `trustmark-q-lab-v2` is **experimental and unqualified**. Do not present a successful lab round trip as proof of screenshot, crop, format-wide, or phone-photo reliability. Preserve explicit inconclusive/failure states and fail closed rather than showing an unmarked protected document.
+- Make database changes through `lib/db/schema.ts` and reviewed `drizzle/` migrations. Validate migrations on a disposable database; do not apply them to a shared database, send real email, push, or deploy without authorization for that action.
+
 ## Memory (`memory/memory.md`)
 
 **Before every commit**, update `memory/memory.md` with what changed in this session.

@@ -1,5 +1,7 @@
 /// <reference lib="webworker" />
 
+import { createCopySecret, unwrapCopyIdentifier } from "@/lib/fingerprint/copy-secret";
+import { identifierHex } from "@/lib/fingerprint/identity";
 import { fileAad, metadataAad } from "@/lib/crypto/aad";
 import { base64urlToBytes, bytesToBase64url } from "@/lib/crypto/base64url";
 import {
@@ -27,6 +29,8 @@ type RewrapRequest = {
   privateKey: CryptoKey;
   documents: Array<{ documentId: string; ownerWrappedKey: string }>;
   recipients: PreparedRecipient[];
+  fingerprintOwnerPublicKey?: JsonWebKey;
+  existingFingerprints?: Array<{documentId: string; ownerWrappedKey: string}>;
 };
 type DecryptMetadataRequest = {
   id: string;
@@ -87,6 +91,13 @@ self.onmessage = async (event: MessageEvent<EncryptRequest | RewrapRequest | Dec
     if (request.operation === "REWRAP") {
       const ready = request.recipients.filter((recipient) => recipient.status === "READY");
       const envelopes = [];
+      const owner = request.fingerprintOwnerPublicKey ? await importPublicKey(request.fingerprintOwnerPublicKey) : null;
+      const used = new Map<string, Set<string>>();
+      for (const fingerprint of request.existingFingerprints ?? []) {
+        const set = used.get(fingerprint.documentId) ?? new Set<string>();
+        set.add(identifierHex(await unwrapCopyIdentifier(fingerprint.documentId, fingerprint.ownerWrappedKey, request.privateKey)));
+        used.set(fingerprint.documentId, set);
+      }
       for (const [index, recipient] of ready.entries()) {
         if (!recipient.publicKeyJwk || !recipient.clerkUserId || !recipient.keyVersion || !recipient.publicKeyFingerprint) {
           throw new Error("Recipient key data is incomplete");
@@ -96,7 +107,9 @@ self.onmessage = async (event: MessageEvent<EncryptRequest | RewrapRequest | Dec
         for (const document of request.documents) {
           const documentKey = await unwrapDocumentKey(base64urlToBytes(document.ownerWrappedKey), request.privateKey, true);
           const wrapped = await wrapDocumentKey(documentKey, publicKey);
-          wrappedDocuments.push({ documentId: document.documentId, wrappedFileKey: bytesToBase64url(new Uint8Array(wrapped)) });
+          const set = used.get(document.documentId) ?? new Set<string>(); used.set(document.documentId, set);
+          const fingerprint = owner ? await createCopySecret(document.documentId, owner, publicKey, set) : undefined;
+          wrappedDocuments.push({ fingerprint, documentId: document.documentId, wrappedFileKey: bytesToBase64url(new Uint8Array(wrapped)) });
         }
         envelopes.push({
           status: "READY" as const,

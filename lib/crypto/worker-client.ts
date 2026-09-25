@@ -70,6 +70,8 @@ export function rewrapForRecipients(payload: {
   privateKey: CryptoKey;
   documents: Array<{ documentId: string; ownerWrappedKey: string }>;
   recipients: PreparedRecipient[];
+  fingerprintOwnerPublicKey?: JsonWebKey;
+  existingFingerprints?: Array<{documentId: string; ownerWrappedKey: string}>;
 }, onProgress?: (completedRecipients: number) => void) {
   return runWorker<Array<{
     status: "READY";
@@ -77,7 +79,7 @@ export function rewrapForRecipients(payload: {
     clerkUserId: string;
     keyVersion: number;
     publicKeyFingerprint: string;
-    envelopes: Array<{ documentId: string; wrappedFileKey: string }>;
+    envelopes: Array<{ documentId: string; wrappedFileKey: string; fingerprint?: import("@/lib/fingerprint/copy-secret").WrappedFingerprint }>;
   }>>(fileWorker(), { operation: "REWRAP", ...payload }, (progress) => onProgress?.(Number(progress)));
 }
 

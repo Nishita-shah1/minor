@@ -41,4 +41,16 @@ describe("Brevo batch delivery", () => {
       { recipientEmail: "bob@example.com", expiresAt: null },
     ], "batch-id", null)).rejects.toThrow("incomplete batch receipt");
   });
+
+  it("includes a recoverable claim code when a mail tracker strips the URL fragment", async () => {
+    const request = vi.fn().mockResolvedValue(new Response(JSON.stringify({ messageIds: ["message-1"] }), { status: 201 }));
+    vi.stubGlobal("fetch", request);
+    const code = "a".repeat(43);
+    await sendShareEmailBatch([{ recipientEmail: "alice@example.com",
+      shareUrl: `https://echoleaks.vercel.app/share/one#invite=${code}`, expiresAt: null }], "attempt-id", null);
+    const [, init] = request.mock.calls[0] as [string, RequestInit];
+    const message = JSON.parse(String(init.body)).messageVersions[0].htmlContent as string;
+    expect(message).toContain(`#invite=${code}`);
+    expect(message).toContain(`paste this code on the share page: <strong>${code}</strong>`);
+  });
 });

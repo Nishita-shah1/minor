@@ -1,0 +1,55 @@
+{
+  "kind": "component-ui-smoke-only",
+  "qualified": false,
+  "checks": [
+    {
+      "name": "local-encode",
+      "pass": true
+    },
+    {
+      "name": "exact-pixel-ui-decode",
+      "pass": true
+    },
+    {
+      "name": "png-download-upload-decode",
+      "pass": true
+    },
+    {
+      "name": "visible-canvas-screenshot-upload-decode",
+      "pass": true
+    },
+    {
+      "name": "aligned-two-attempt-ui-decode",
+      "pass": true
+    },
+    {
+      "name": "full-screen-border-selection-decodes-locally",
+      "pass": true
+    },
+    {
+      "name": "clear-and-release-ui",
+      "pass": true
+    },
+    {
+      "name": "unmarked-ui-abstention",
+      "pass": true
+    },
+    {
+      "name": "narrow-crop-loads-and-abstains-without-alignment",
+      "pass": true
+    },
+    {
+      "name": "local-assets-only-no-image-posts",
+      "pass": true,
+      "requests": 11
+    }
+  ],
+  "errors": [],
+  "browserArgs": [
+    "--enable-unsafe-webgpu",
+    "--enable-features=Vulkan",
+    "--use-angle=vulkan",
+    "--disable-vulkan-surface"
+  ],
+  "browser": "154.0.8037.57"
+}

@@ -32,7 +32,9 @@ function emailHtml(message: ShareEmail) {
   const expiry = message.expiresAt
     ? `<p>This access expires on ${escapeHtml(message.expiresAt.toISOString())}.</p>`
     : "";
-  return `<!doctype html><html><body style="font-family:Arial,sans-serif"><h1>EchoLeaks</h1><p>A protected file group has been shared with <strong>${address}</strong>.</p><p>Sign in with that exact address to continue securely.</p>${opening}${expiry}<p><a href="${escapeHtml(destination)}">${action}</a></p><p>Do not forward this link. Possessing it alone does not grant access.</p></body></html>`;
+  const code = message.shareUrl ? /^#invite=([A-Za-z0-9_-]{43})$/.exec(new URL(message.shareUrl).hash)?.[1] : null;
+  const recovery = code ? `<p>If the link loses its claim code, paste this code on the share page: <strong>${escapeHtml(code)}</strong></p>` : "";
+  return `<!doctype html><html><body style="font-family:Arial,sans-serif"><h1>EchoLeaks</h1><p>A protected file group has been shared with <strong>${address}</strong>.</p><p>Sign in with that exact address to continue securely.</p>${opening}${expiry}<p><a href="${escapeHtml(destination)}">${action}</a></p>${recovery}<p>Do not forward this link. Possessing it alone does not grant access.</p></body></html>`;
 }
 
 export async function sendShareEmailBatch(

@@ -1,0 +1,30 @@
+{
+  "kind": "CPU-graph-equivalence-only",
+  "qualified": false,
+  "ort": "1.30.0",
+  "numpy": "2.5.3",
+  "hashes": {
+    "original": "19b3d1b25836130ffd78775a8f61539f993375d1823ef0e59ba5b8dffb4f892d",
+    "derived": "449c3acb61972d57fbc0deda5351b1ed7fd8957dc1714391502941719e6401e9"
+  },
+  "cases": [
+    {
+      "name": "white",
+      "mae": 5.141130898778101e-08,
+      "max": 3.5762786865234375e-07,
+      "pass": true
+    },
+    {
+      "name": "black",
+      "mae": 5.087531462777406e-08,
+      "max": 3.5762786865234375e-07,
+      "pass": true
+    },
+    {
+      "name": "seeded-rgb",
+      "mae": 1.965355380662004e-07,
+      "max": 1.6093254089355469e-06,
+      "pass": true
+    }
+  ]
+}
