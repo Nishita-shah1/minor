@@ -15,6 +15,8 @@ const panel = "space-y-5 rounded-xl border-2 border-black bg-card p-5 shadow-md 
 const field = "block w-full rounded-lg border-2 border-black bg-background p-3 text-sm file:mr-3 file:rounded-full file:border-2 file:border-black file:bg-primary file:px-3 file:py-1 file:font-bold";
 
 export function ScanWorkspace() {
+  const [selectArea, setSelectArea] = useState(false);
+  const [areaPoints, setAreaPoints] = useState<Point[]>([]);
   const [lookupOpen, setLookupOpen] = useState(false);
   const [candidates, setCandidates] = useState<LocalCandidate[]>([]);
   const engine = useRef<BrowserFingerprintEngine | null>(null);
@@ -53,7 +55,7 @@ export function ScanWorkspace() {
     finally { if (epoch === generation.current) setBusy(false); }
   }
   function reset() {
-    generation.current++; engine.current?.cancel();
+    generation.current++; engine.current?.cancel(); setSelectArea(false); setAreaPoints([]);
     originalFile.current = null; setPage(1); setPageCount(1); setResizeNotice("");
     setOriginal(null); setEvidence(null); setMarked(null); setTestId(""); setAligned(false);
     setOriginalPoints([]); setEvidencePoints([]); clearResult(); setBusy(false); setResetKey(k => k + 1);
@@ -61,7 +63,7 @@ export function ScanWorkspace() {
   }
   async function load(file: File, target: "original" | "evidence", pageNumber = 1) {
     if (target === "evidence" && !["image/png", "image/jpeg"].includes(file.type)) { setEvidence(null); setEvidencePoints([]); setAligned(false); setMessage("Choose a PNG or JPEG image."); clearResult(); return; }
-    setAligned(false);
+    setAligned(false); setSelectArea(false); setAreaPoints([]);
     if (target === "evidence") setResizeNotice("");
     if (target === "evidence") { setEvidence(null); setEvidencePoints([]); }
     else { setOriginal(null); setOriginalPoints([]); setMarked(null); if (file !== originalFile.current) setTestId(""); }
@@ -79,9 +81,9 @@ export function ScanWorkspace() {
     if (!evidence || !engine.current) return;
     await run(async current => {
       setMessage("Checking WebGPU and preparing the local decoder…");
-      await engine.current!.initialize("decode");
+      const runtime = await engine.current!.initialize("decode");
       if (!current()) return;
-      setMessage("Analyzing pixels locally…");
+      setMessage(runtime.provider === "wasm" ? "Analyzing locally on your CPU (WebGPU unavailable). This may take longer…" : "Analyzing pixels locally…");
       const start = performance.now();
       const response = await investigate({ original: original ?? evidence, evidence,
         ...(aligned ? { correspondence: { original: originalPoints, evidence: evidencePoints } } : {}),
@@ -120,6 +122,18 @@ export function ScanWorkspace() {
       } finally { if (url) URL.revokeObjectURL(url); canvas.width = canvas.height = 0; }
     });
   }
+  function useSelectedArea() {
+    if (!evidence || areaPoints.length !== 2) return;
+    const left = Math.max(0, Math.floor(Math.min(areaPoints[0].x, areaPoints[1].x)));
+    const top = Math.max(0, Math.floor(Math.min(areaPoints[0].y, areaPoints[1].y)));
+    const width = Math.min(evidence.width, Math.ceil(Math.max(areaPoints[0].x, areaPoints[1].x))) - left;
+    const height = Math.min(evidence.height, Math.ceil(Math.max(areaPoints[0].y, areaPoints[1].y))) - top;
+    if (width < 32 || height < 32) {setMessage("Select a larger document area.");return;}
+    const data = new Uint8ClampedArray(width * height * 4);
+    for (let row = 0; row < height; row++) data.set(evidence.data.subarray(((top + row) * evidence.width + left) * 4, ((top + row) * evidence.width + left + width) * 4), row * width * 4);
+    setEvidence({data,width,height}); setAligned(false); setEvidencePoints([]); setSelectArea(false); setAreaPoints([]); clearResult();
+    setMessage("Document area selected locally. Analyze to check its fingerprint.");
+  }
   const canAlign = !!original && !!evidence;
   const geometryReady = !aligned || (canAlign && originalPoints.length === 4 && evidencePoints.length === 4);
 
@@ -140,7 +154,11 @@ export function ScanWorkspace() {
         </label>
         <p className="text-sm text-muted-foreground">PNG or JPEG, up to 25 MiB. Large screenshots are resized locally. Crop away browser controls so the document fills the image.</p>
         {resizeNotice && <p role="note" className="text-sm text-muted-foreground">{resizeNotice}</p>}
-        {evidence && <PixelPreview pixels={evidence} label="Screenshot preview" />}
+        {evidence && <>
+          <PixelPreview pixels={evidence} label="Screenshot preview" points={areaPoints} disabled={busy || areaPoints.length >= 2} onPoint={selectArea ? point => setAreaPoints(points => [...points,point]) : undefined} />
+          <button className={`${button} bg-card`} disabled={busy} onClick={() => {setSelectArea(value => !value);setAreaPoints([]);}}>{selectArea ? "Cancel selection" : "Select document area"}</button>
+          {selectArea && <><p className="text-sm">Click the top-left and bottom-right corners of the document in your full-screen screenshot.</p><button className={button} disabled={areaPoints.length !== 2 || busy} onClick={useSelectedArea}>Use selected area</button></>}
+        </>}
         <div className="flex flex-wrap gap-3">
           <button className={button} disabled={busy || !evidence || !geometryReady} onClick={() => void analyze()}><ScanLine aria-hidden="true" size={18} />{busy ? "Processing…" : "Analyze screenshot"}</button>
           <button className={`${button} bg-card`} onClick={reset}>Cancel / clear images</button>

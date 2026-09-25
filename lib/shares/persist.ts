@@ -35,9 +35,15 @@ export function appendRecipientsSql(groupId: string, ownerId: string, recipients
     )
     ${fingerprintsEnabled ? sql`, fingerprint_insert AS (
       INSERT INTO copy_fingerprints (document_id, share_id, owner_wrapped_key, recipient_wrapped_key, profile_id)
-      SELECT (e->>'documentId')::uuid, i.id, e->'fingerprint'->>'ownerWrappedKey', e->'fingerprint'->>'recipientWrappedKey', e->'fingerprint'->>'profileId'
-      FROM incoming r JOIN inserted i ON i.id = r.id CROSS JOIN LATERAL jsonb_array_elements(r.envelopes) e
-      RETURNING id
+      SELECT (e->>'documentId')::uuid, targets.id, e->'fingerprint'->>'ownerWrappedKey', e->'fingerprint'->>'recipientWrappedKey', e->'fingerprint'->>'profileId'
+      FROM incoming r JOIN LATERAL (
+        SELECT i.id FROM inserted i WHERE i.id = r.id
+        UNION ALL
+        SELECT s.id FROM shares s CROSS JOIN batch b WHERE s.group_id = b.group_id
+          AND s.recipient_email_normalized = r.email AND s.recipient_clerk_user_id = r."userId"
+          AND s.status = 'ACTIVE' AND b.email_status <> 'SENDING'
+      ) targets ON true CROSS JOIN LATERAL jsonb_array_elements(r.envelopes) e
+      ON CONFLICT DO NOTHING RETURNING id
     )` : sql``}
     SELECT (SELECT allowed FROM allowance) AS allowed,
       EXISTS(SELECT 1 FROM batch) AS available,

@@ -34,7 +34,9 @@ async function main() {
       INSERT INTO share_batches(id,group_id,sender_clerk_user_id,permission) VALUES('${batch}','${group}','owner','VIEW_ONLY');`);
     const alice = recipient("alice@example.test");
     query(transaction(append([alice])));
+    query(`DELETE FROM copy_fingerprints WHERE share_id='${alice.id}'`);
     query(transaction(append([recipient(alice.email)])));
+    assert.equal(query("SELECT count(*) FROM copy_fingerprints"), "1");
     assert.equal(query("SELECT count(*) FROM shares"), "1");
     assert.equal(query("SELECT id FROM shares"), alice.id);
     query(transaction(append([recipient("bob@example.test")])));

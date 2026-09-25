@@ -31,3 +31,17 @@ The marked viewer shows completed output only, requires fullscreen, covers on vi
 - NOT RUN: authenticated owner/recipient end-to-end rehearsal, complete lifecycle/privacy suite, every renderer qualification, human readability, blind recovery, camera qualification, full build/E2E reruns (user requested focused checks only).
 
 Screenshot tuning still has 87/270 crop misses. No production profile was frozen. This is a source-copy clue, not proof of who intentionally disclosed the content. Phone-photo success is not promised. Text/CSV/XLSX protected renderers are still not implemented.
+
+## Missing WebGPU and existing copies (follow-up)
+
+A real user browser returned no WebGPU adapter. The engine now chooses local ONNX WASM/CPU when WebGPU or shader-f16/device creation is unavailable. This remains experimental; it uses the same checksum-verified model and preprocessing, and does not upload pixels. The isolated browser check forcibly removed `navigator.gpu` from the worker and recovered the same identifier from both marked PDF pages. This is a focused compatibility check, not broad fallback qualification.
+
+All unmarked recipient rendering paths are removed. A disabled server feature returns an explicit error, and missing copy records ask the owner to enable protection. History's **Prepare fingerprints for existing links** wraps fresh copy secrets using the owner's unlocked keys and verified recipient keys; **Save recipients / protection and show links** atomically inserts missing associations. Existing associations and URLs are never replaced. No server-generated plaintext identifiers or unauthenticated backfill is used. Screenshots captured before marking remain untraceable.
+
+Full-screen evidence can be loaded and the page selected using two opposite corners through **Select document area**. This is a manual extraction step, not a claim of reliable automatic decoding with arbitrary browser chrome/background.
+
+The separate Clerk session-touch network failure is not a watermark decoder failure. No authentication checks were bypassed or Clerk network failures suppressed. Protected viewing covers on offline/online transitions and requires fresh authorization.
+
+During the edit, JSX was accidentally placed in `lib/shares/persist.ts`; the user reported the resulting parse error. The helper was restored, its intended SQL-only change reapplied, and TypeScript plus disposable PostgreSQL checks passed. The running share route subsequently returned 200 and the unauthenticated shares API returned 401.
+
+The updated isolated Scan harness passed 10 checks, including exact-image decoding after selecting a page within a larger screenshot. Its authenticated lookup panel is stubbed; recipient lookup and Clerk connectivity are not covered by that harness. Initial selection automation failed because the standalone test page lacked overlay positioning CSS; matching that layout fixed the harness. No full suite or build was rerun.

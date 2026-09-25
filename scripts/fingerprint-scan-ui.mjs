@@ -10,12 +10,13 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const output = path.join(root, "test-results/fingerprint-scan-ui");
 await mkdir(output, { recursive: true });
 await writeFile(path.join(output,"entry.tsx"), `import React from 'react';import{createRoot}from'react-dom/client';import{ScanWorkspace}from'../../components/fingerprint/scan-workspace';createRoot(document.getElementById('root')!).render(<ScanWorkspace/>);`);
-await build({entryPoints:[path.join(output,"entry.tsx")],outfile:path.join(output,"app.js"),bundle:true,format:"esm",platform:"browser",jsx:"automatic",alias:{"@":root}});
+await writeFile(path.join(output,"lookup-stub.tsx"), "export function CopyLookup(){return null;}");
+await build({entryPoints:[path.join(output,"entry.tsx")],plugins:[{name:"isolated-auth-panel",setup(build){build.onResolve({filter:/\/copy-lookup$/},()=>({path:path.join(output,"lookup-stub.tsx")}));}}],outfile:path.join(output,"app.js"),bundle:true,format:"esm",platform:"browser",jsx:"automatic",alias:{"@":root}});
 await build({entryPoints:[path.join(root,"workers/fingerprint.worker.ts")],outfile:path.join(output,"worker.js"),bundle:true,format:"esm",platform:"browser",alias:{"@":root}});
 const server=createServer(async(request,response)=>{
   try {
     const url=new URL(request.url,"http://127.0.0.1");
-    if(url.pathname==="/"){response.setHeader("Content-Type","text/html");response.end('<!doctype html><meta charset="utf-8"><title>Scan UI local verification</title><style>body{font:16px sans-serif;background:#fff8e8;padding:24px}canvas{max-width:720px;height:auto}button,input,section,details{border-radius:12px}button{padding:12px;margin:6px}section,details{border:2px solid black;padding:20px;margin:24px 0}output{font-weight:bold}figure{max-width:720px}</style><div id="root"></div><script type="module" src="/app.js"></script>');return;}
+    if(url.pathname==="/"){response.setHeader("Content-Type","text/html");response.end('<!doctype html><meta charset="utf-8"><title>Scan UI local verification</title><style>body{font:16px sans-serif;background:#fff8e8;padding:24px}canvas{max-width:720px;height:auto}button,input,section,details{border-radius:12px}button{padding:12px;margin:6px}section,details{border:2px solid black;padding:20px;margin:24px 0}output{font-weight:bold}figure{max-width:720px}figure>div{position:relative}figure canvas{display:block;width:100%;height:auto}button[aria-label^="Select point"]{position:absolute;inset:0;width:100%;height:100%;margin:0;padding:0;border:0;background:transparent}span[aria-hidden="true"]{pointer-events:none;position:absolute}</style><div id="root"></div><script type="module" src="/app.js"></script>');return;}
     let file;
     if(url.pathname==="/app.js")file=path.join(output,"app.js");
     else if(url.pathname==="/workers/fingerprint.worker.ts")file=path.join(output,"worker.js");
@@ -34,8 +35,8 @@ let browser;
 try {
   browser=await chromium.launch({channel:"chrome",headless:process.env.FINGERPRINT_HEADED!=="1",args});
   report.browser=browser.version();
-  const page=await browser.newPage({viewport:{width:1440,height:1100},acceptDownloads:true});
-  page.setDefaultTimeout(180000);
+  const page=await browser.newPage({viewport:{width:1440,height:2400},acceptDownloads:true});
+  page.setDefaultTimeout(20000);
   const origin=`http://127.0.0.1:${server.address().port}`;
   const requests=[];
   page.on("request",r=>requests.push({url:r.url(),method:r.method()}));
@@ -68,12 +69,24 @@ try {
   await page.getByRole("button",{name:"Analyze screenshot",exact:true}).click();
   await expect(page.getByTestId("recovered-identifier")).toHaveText(expected);
   report.checks.push({name:"visible-canvas-screenshot-upload-decode",pass:true});
+  await page.getByText("Advanced: original & alignment",{exact:true}).click();
   await page.getByLabel("Use corresponding points for alignment").check();
   await page.getByRole("button",{name:"Use full-image corners",exact:true}).click();
   await page.getByRole("button",{name:"Analyze screenshot",exact:true}).click();
   await expect(page.getByTestId("recovered-identifier")).toHaveText(expected);
   await expect(page.getByTestId("scan-result")).toContainText("2 decode attempts");
   report.checks.push({name:"aligned-two-attempt-ui-decode",pass:true});
+  const padded=await page.evaluate(async encoded=>{const b=await createImageBitmap(new Blob([Uint8Array.from(atob(encoded),c=>c.charCodeAt(0))],{type:"image/png"}));const c=document.createElement("canvas");c.width=b.width+80;c.height=b.height+80;const x=c.getContext("2d");x.fillStyle="#ddd";x.fillRect(0,0,c.width,c.height);x.drawImage(b,40,40);b.close();return c.toDataURL().split(",")[1];},(await readFile(png)).toString("base64"));
+  await page.getByLabel("Screenshot image",{exact:true}).setInputFiles({name:"full-screen.png",mimeType:"image/png",buffer:Buffer.from(padded,"base64")});
+  await page.getByRole("button",{name:"Select document area",exact:true}).click();
+  const selection=page.getByRole("button",{name:"Select point on Screenshot preview",exact:true});
+  const box=await selection.boundingBox();
+  await selection.click({position:{x:box.width*40.01/848,y:box.height*40.01/1104}});
+  await selection.click({position:{x:box.width*807.99/848,y:box.height*1063.99/1104}});
+  await page.getByRole("button",{name:"Use selected area",exact:true}).click();
+  await page.getByRole("button",{name:"Analyze screenshot",exact:true}).click();
+  await expect(page.getByTestId("recovered-identifier")).toHaveText(expected);
+  report.checks.push({name:"full-screen-border-selection-decodes-locally",pass:true});
   await page.getByRole("button",{name:"Cancel / clear images",exact:true}).click();
   await expect(page.getByTestId("recovered-identifier")).toHaveCount(0);
   await expect(page.getByRole("button",{name:"Analyze screenshot",exact:true})).toBeDisabled();

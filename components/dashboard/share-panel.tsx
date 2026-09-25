@@ -70,11 +70,11 @@ export function SharePanel({ groupId, privateKey }: { groupId: string; privateKe
     setPrepared([]);
   };
 
-  const prepare = async () => {
-    if (!emails.length) return setMessage("Add at least one recipient.");
+  const prepare = async (recipients = emails) => {
+    if (!recipients.length) return setMessage("Add at least one recipient.");
     setBusy(true); setMessage("Checking recipients with Clerk…");
     try {
-      const response = await fetch(`/api/upload-groups/${groupId}/shares/prepare`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ recipientEmails: emails }) });
+      const response = await fetch(`/api/upload-groups/${groupId}/shares/prepare`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ recipientEmails: recipients }) });
       const body = await response.json();
       if (!response.ok) throw new Error(body.error?.message ?? "Could not prepare recipients.");
       setPrepared(body.recipients); setMessage("Recipients checked.");
@@ -127,7 +127,7 @@ export function SharePanel({ groupId, privateKey }: { groupId: string; privateKe
       <h2 className="font-head text-xl">2. Share securely</h2>
       <p className="mt-1 text-sm text-muted-foreground">Add up to 100 emails manually or from CSV, TXT, or XLSX.</p>
       {loadingLinks && <p role="status">Loading existing secure links…</p>}
-      {batchId && <div className="mt-4 rounded-xl border-2 border-black bg-background p-3"><p className="font-bold">{shares.length} existing recipient{shares.length === 1 ? "" : "s"}</p><p className="my-2 text-sm">{shares.map(share => share.recipientEmail).join(", ")}</p><button type="button" disabled={busy} onClick={() => void reopenLinks()} className="rounded-full border-2 border-black bg-primary px-5 py-2.5 font-bold shadow-sm">View secure links</button><p className="mt-2 text-sm">Add recipients below. Existing permission and access times are preserved.</p></div>}
+      {batchId && <div className="mt-4 rounded-xl border-2 border-black bg-background p-3"><p className="font-bold">{shares.length} existing recipient{shares.length === 1 ? "" : "s"}</p><p className="my-2 text-sm">{shares.map(share => share.recipientEmail).join(", ")}</p><button type="button" disabled={busy} onClick={() => void reopenLinks()} className="rounded-full border-2 border-black bg-primary px-5 py-2.5 font-bold shadow-sm">View secure links</button><p className="mt-2 text-sm">Add recipients below. Existing permission and access times are preserved.</p><button type="button" disabled={busy || !privateKey} onClick={() => void prepare(shares.filter(share => share.status === "ACTIVE").map(share => share.recipientEmail))} className="mt-3 rounded-full border-2 border-black bg-primary px-5 py-2 font-bold disabled:opacity-40">Prepare fingerprints for existing links</button></div>}
       {!privateKey && <p className="mt-3 text-sm">Unlock your keys to add recipients. You can view and share existing links now.</p>}
       <fieldset disabled={busy || loadingLinks || !privateKey}>
       <div className="mt-4 flex flex-wrap gap-2">
@@ -139,7 +139,7 @@ export function SharePanel({ groupId, privateKey }: { groupId: string; privateKe
       <div className="mt-3 flex flex-wrap gap-2">{emails.map((email) => <span key={email} className="flex items-center gap-2 rounded-full border-2 border-black bg-muted px-3 py-1.5 text-xs font-bold">{email}<button type="button" aria-label={`Remove ${email}`} onClick={() => { setEmails((list) => list.filter((item) => item !== email)); setPrepared([]); }} className="rounded-full"><Trash2 className="size-3.5" /></button></span>)}</div>
       <div className="mt-4 flex flex-wrap items-center gap-3">
         <select disabled={!!batchId} value={permission} onChange={(event) => setPermission(event.target.value as typeof permission)} className="h-11 rounded-xl border-2 border-black bg-background px-3 font-bold"><option value="VIEW_AND_DOWNLOAD">View and download</option><option value="VIEW_ONLY">View only</option></select>
-        {!prepared.length ? <button type="button" disabled={busy || !emails.length} onClick={() => void prepare()} className="rounded-full border-2 border-black bg-primary px-5 py-2.5 font-head shadow-sm disabled:opacity-50">Prepare share</button> : <button type="button" disabled={busy} onClick={() => void create()} className="rounded-full border-2 border-black bg-primary px-5 py-2.5 font-head shadow-sm disabled:opacity-50">{batchId ? "Add recipients and show links" : "Create secure links"}</button>}
+        {!prepared.length ? <button type="button" disabled={busy || !emails.length} onClick={() => void prepare()} className="rounded-full border-2 border-black bg-primary px-5 py-2.5 font-head shadow-sm disabled:opacity-50">Prepare share</button> : <button type="button" disabled={busy} onClick={() => void create()} className="rounded-full border-2 border-black bg-primary px-5 py-2.5 font-head shadow-sm disabled:opacity-50">{batchId ? "Save recipients / protection and show links" : "Create secure links"}</button>}
       </div>
       {!batchId && <details className="mt-4 rounded-xl border-2 border-black bg-background p-3">
         <summary className="cursor-pointer rounded-full font-bold">Access timing (optional)</summary>

@@ -9,6 +9,7 @@ export class TrustMarkEngine implements FingerprintEngine {
   private encoder?: ort.InferenceSession;
   private decoder?: ort.InferenceSession;
   private device?: GPUDevice;
+  private provider?: "webgpu" | "wasm";
   private lost = false;
   private disposed = false;
 
@@ -16,28 +17,29 @@ export class TrustMarkEngine implements FingerprintEngine {
 
   async initialize(mode: "encode" | "decode"): Promise<RuntimeInfo> {
     if (this.disposed || this.lost) throw new Error("Fingerprint engine unavailable; reopen the lab");
-    if (!this.device) {
-      if (!globalThis.isSecureContext || !navigator.gpu) throw new Error("WebGPU requires a supported desktop browser and a secure context");
-      const adapter = await navigator.gpu.requestAdapter();
-      if (!adapter) throw new Error("No WebGPU adapter is available");
-      if (!adapter.features.has("shader-f16")) throw new Error("This experimental model requires WebGPU shader-f16");
-      this.device = await adapter.requestDevice({ requiredFeatures: ["shader-f16"], requiredLimits: {
-        maxStorageBufferBindingSize: adapter.limits.maxStorageBufferBindingSize,
-        maxBufferSize: adapter.limits.maxBufferSize,
-      } });
-      void this.device.lost.then(() => {
-        this.lost = true;
-        if (!this.disposed) this.onDeviceLost();
-      });
+    if (!this.provider) {
+      if (!globalThis.isSecureContext) throw new Error("Local fingerprinting requires HTTPS or localhost");
       ort.env.wasm.numThreads = 1;
       ort.env.wasm.proxy = false;
       ort.env.wasm.wasmPaths = `/fingerprint-assets/ort-${manifest.onnxRuntimeVersion}/`;
-      ort.env.webgpu.device = this.device;
+      const adapter = await navigator.gpu?.requestAdapter().catch(() => null);
+      if (adapter?.features.has("shader-f16")) {
+        try {
+          this.device = await adapter.requestDevice({ requiredFeatures: ["shader-f16"], requiredLimits: {
+            maxStorageBufferBindingSize: adapter.limits.maxStorageBufferBindingSize, maxBufferSize: adapter.limits.maxBufferSize,
+          } });
+        } catch { /* The browser-local WASM path also supports devices without usable WebGPU. */ }
+      }
+      this.provider = this.device ? "webgpu" : "wasm";
+      if (this.device) {
+        ort.env.webgpu.device = this.device;
+        void this.device.lost.then(() => { this.lost = true; if (!this.disposed) this.onDeviceLost(); });
+      }
     }
     if (mode === "encode" && !this.encoder) this.encoder = await this.loadModel("encoder");
     if (mode === "decode" && !this.decoder) this.decoder = await this.loadModel("decoder");
     if (this.lost) throw new Error("GPU device was lost during initialization");
-    return { provider: "webgpu", profile: manifest.profileId, qualified: false };
+    return { provider: this.provider, profile: manifest.profileId, qualified: false };
   }
 
   private async loadModel(kind: "encoder" | "decoder") {
@@ -47,7 +49,7 @@ export class TrustMarkEngine implements FingerprintEngine {
     const bytes = await response.arrayBuffer();
     const digest = Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", bytes)), (x) => x.toString(16).padStart(2, "0")).join("");
     if (bytes.byteLength !== model.bytes || digest !== model.sha256) throw new Error("Model integrity verification failed");
-    const session = await ort.InferenceSession.create(bytes, { executionProviders: ["webgpu"], graphOptimizationLevel: "all" });
+    const session = await ort.InferenceSession.create(bytes, { executionProviders: [this.provider!], graphOptimizationLevel: "all" });
     const inputs = kind === "encoder" ? ["onnx::Concat_0", "onnx::Gemm_1"] : ["image"];
     const output = kind === "encoder" ? "image" : "output";
     if (inputs.some((name) => !session.inputNames.includes(name)) || !session.outputNames.includes(output)) {
