@@ -10,7 +10,7 @@ import { rewrapForRecipients } from "@/lib/crypto/worker-client";
 import { parseEmailText, parseRecipientFile } from "@/lib/recipients/parse";
 import { validateShareSchedule } from "@/lib/shares/schedule";
 
-type OwnerAccess = { files: Array<{ documentId: string; status: string; wrappedFileKey: string | null }> };
+type OwnerAccess = { fingerprintOwnerPublicKey?: JsonWebKey; existingFingerprints?: Array<{documentId: string; ownerWrappedKey: string}>; files: Array<{ documentId: string; status: string; wrappedFileKey: string | null }> };
 
 export function SharePanel({ groupId, privateKey }: { groupId: string; privateKey?: CryptoKey }) {
   const emailAttempt = useRef<string | null>(null);
@@ -95,7 +95,7 @@ export function SharePanel({ groupId, privateKey }: { groupId: string; privateKe
       const owner = await ownerResponse.json() as OwnerAccess & { error?: { message?: string } };
       if (!ownerResponse.ok) throw new Error(owner.error?.message ?? "Owner keys unavailable.");
       const documents = owner.files.filter((file) => file.status === "READY" && file.wrappedFileKey).map((file) => ({ documentId: file.documentId, ownerWrappedKey: file.wrappedFileKey! }));
-      const wrapped = await rewrapForRecipients({ privateKey, documents, recipients: prepared }, (count) => setMessage(`Preparing secure links… ${count} / ${prepared.filter((recipient) => recipient.status === "READY").length} recipients`));
+      const wrapped = await rewrapForRecipients({ privateKey, documents, recipients: prepared, fingerprintOwnerPublicKey: owner.fingerprintOwnerPublicKey, existingFingerprints: owner.existingFingerprints }, (count) => setMessage(`Preparing secure links… ${count} / ${prepared.filter((recipient) => recipient.status === "READY").length} recipients`));
       const recipients = [...wrapped, ...prepared.filter((recipient) => recipient.status === "NOT_ENROLLED").map((recipient) => ({ status: "NOT_ENROLLED" as const, email: recipient.email }))];
       const response = await fetch(`/api/upload-groups/${groupId}/shares`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({
         recipients, permission,

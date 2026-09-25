@@ -1,7 +1,8 @@
 import { and, eq } from "drizzle-orm";
 import { requireVerifiedUser } from "@/lib/auth/current-verified-user";
 import { getDb } from "@/lib/db";
-import { documentKeyEnvelopes, documents, shareBatches, shares, uploadGroups } from "@/lib/db/schema";
+import { documentKeyEnvelopes, documents, shareBatches, shares, uploadGroups, copyFingerprints } from "@/lib/db/schema";
+import { experimentalFingerprintingEnabled } from "@/lib/fingerprint/server-config";
 import { presignEncryptedDownload } from "@/lib/r2/objects";
 import { json, requireUuid, safeRouteError } from "@/lib/server/http";
 import { evaluateShareAccess } from "@/lib/shares/policy";
@@ -36,7 +37,12 @@ export async function GET(_request: Request, context: RouteContext<"/api/shares/
       recipientEmailNormalized: record.recipientEmailNormalized,
     }, user.userId, user.verifiedEmails);
     if (decision !== "AUTHORIZED" || record.documentStatus !== "READY" || !record.objectKey || !record.fileIv) return forbidden();
-    return json({ documentId, downloadUrl: await presignEncryptedDownload(record.objectKey), wrappedFileKey: record.wrappedFileKey, fileIv: record.fileIv });
+    let fingerprint: { recipientWrappedKey: string; profileId: string } | undefined;
+    if (experimentalFingerprintingEnabled()) {
+      [fingerprint] = await getDb().select({ recipientWrappedKey: copyFingerprints.recipientWrappedKey, profileId: copyFingerprints.profileId }).from(copyFingerprints).where(and(eq(copyFingerprints.documentId, documentId), eq(copyFingerprints.shareId, shareId))).limit(1);
+      if (!fingerprint) return json({ error: { code: "LEGACY_REUPLOAD_REQUIRED", message: "This older copy has no fingerprint. Ask the owner to upload and share it again." } }, { status: 409 });
+    }
+    return json({ fingerprint, documentId, downloadUrl: await presignEncryptedDownload(record.objectKey), wrappedFileKey: record.wrappedFileKey, fileIv: record.fileIv });
   } catch (error) {
     return safeRouteError(error);
   }

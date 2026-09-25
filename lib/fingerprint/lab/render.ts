@@ -1,3 +1,4 @@
+import { openPdfDocument } from "../pdf-document";
 import type { Pixels } from "../types";
 import { validatePixels } from "../trustmark/pixels";
 
@@ -10,34 +11,29 @@ function surface(width: number, height: number) {
   return { canvas, context };
 }
 
-export async function renderLocalFile(file: File, options: { evidence?: boolean } = {}): Promise<Pixels> {
+export async function renderLocalFile(file: File, options: { evidence?: boolean; page?: number; onPageCount?: (count: number) => void; onResize?: (from: string, to: string) => void } = {}): Promise<Pixels> {
   if (file.size > 25 * 1024 * 1024) throw new Error("Lab files must be at most 25 MiB");
   if (file.type === "application/pdf" || /\.pdf$/i.test(file.name)) {
-    const pdfjs = await import("pdfjs-dist");
-    const assets = "/fingerprint-assets/pdfjs-6.3.289/";
-    pdfjs.GlobalWorkerOptions.workerSrc = `${assets}pdf.worker.min.mjs`;
-    const loading = pdfjs.getDocument({ data: await file.arrayBuffer(), useSystemFonts: false, standardFontDataUrl: `${assets}standard_fonts/`, cMapUrl: `${assets}cmaps/`, cMapPacked: true, wasmUrl: `${assets}wasm/` });
+    const pdf = await openPdfDocument(await file.arrayBuffer());
     try {
-      const document = await loading.promise;
-      const page = await document.getPage(1);
-      const natural = page.getViewport({ scale: 1 });
-      const viewport = page.getViewport({ scale: 1536 / Math.max(natural.width, natural.height) });
-      const { canvas, context } = surface(Math.ceil(viewport.width), Math.ceil(viewport.height));
-      try {
-        await page.render({ canvas, canvasContext: context, viewport, background: "white" }).promise;
-        const pixels = context.getImageData(0, 0, canvas.width, canvas.height);
-        validatePixels(pixels);
-        return pixels;
-      } finally { canvas.width = canvas.height = 0; page.cleanup(); }
-    } finally { await loading.destroy(); }
+      options.onPageCount?.(pdf.pageCount);
+      const pixels = await pdf.render(options.page ?? 1);
+      validatePixels(pixels);
+      return pixels;
+    } finally { await pdf.dispose(); }
   }
   if (!["image/png", "image/jpeg"].includes(file.type)) throw new Error("This lab accepts PDF, PNG, and JPEG fixtures only");
   const bitmap = await createImageBitmap(file, { imageOrientation: "from-image" });
   try {
-    if (bitmap.width > 4096 || bitmap.height > 4096 || bitmap.width * bitmap.height > 4_194_304) throw new Error("Evidence must be at most 4 megapixels and 4096 pixels per side; the lab will not silently resize it");
-    const { canvas, context } = surface(bitmap.width, bitmap.height);
+    const oversized = bitmap.width > 4096 || bitmap.height > 4096 || bitmap.width * bitmap.height > 4_194_304;
+    if (oversized && !options.evidence) throw new Error("Original images must be at most 4 megapixels and 4096 pixels per side.");
+    const scale = oversized ? Math.min(4096 / bitmap.width, 4096 / bitmap.height, Math.sqrt(4_194_304 / (bitmap.width * bitmap.height))) : 1;
+    const width = Math.max(1, Math.floor(bitmap.width * scale)), height = Math.max(1, Math.floor(bitmap.height * scale));
+    if (oversized) options.onResize?.(`${bitmap.width} × ${bitmap.height}`, `${width} × ${height}`);
+    const { canvas, context } = surface(width, height);
+    context.imageSmoothingEnabled = true; context.imageSmoothingQuality = "high";
     try {
-      context.drawImage(bitmap, 0, 0);
+      context.drawImage(bitmap, 0, 0, width, height);
       const pixels = context.getImageData(0, 0, canvas.width, canvas.height);
       // Evidence crops may be narrower than model input; alignment reconstructs
       // them before inference. Keep strict dimensions for original/encoding input.

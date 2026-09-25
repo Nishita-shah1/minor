@@ -184,3 +184,13 @@ export const accessEvents = pgTable(
   },
   (table) => [index("access_events_share_idx").on(table.shareId)],
 );
+
+export const copyFingerprints = pgTable("copy_fingerprints", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  documentId: uuid("document_id").notNull().references(() => documents.id, { onDelete: "cascade" }),
+  shareId: uuid("share_id").notNull().references(() => shares.id, { onDelete: "cascade" }),
+  ownerWrappedKey: text("owner_wrapped_key").notNull(),
+  recipientWrappedKey: text("recipient_wrapped_key").notNull(),
+  profileId: text("profile_id").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, table => [uniqueIndex("copy_fingerprints_document_share_idx").on(table.documentId, table.shareId)]);

@@ -15,9 +15,9 @@ async function main() {
     return r.stdout.trim();
   };
   const query = (text: string) => command(["exec", "-i", container, "psql", "-U", "postgres", "-At", "-v", "ON_ERROR_STOP=1"], text);
-  const recipient = (email: string, userId = email) => ({ id: randomUUID(), email, userId, status: "ACTIVE", keyVersion: 1, envelopes: [{ documentId: document, wrappedFileKey: "public-test-wrapper" }] });
+  const recipient = (email: string, userId = email) => ({ id: randomUUID(), email, userId, status: "ACTIVE", keyVersion: 1, envelopes: [{ documentId: document, wrappedFileKey: "public-test-wrapper", fingerprint: {ownerWrappedKey:"owner-test-wrapper",recipientWrappedKey:"recipient-test-wrapper",profileId:"trustmark-q-lab-v2"} }] });
   const append = (rows: ReturnType<typeof recipient>[], owner = "owner") => {
-    const q = new PgDialect().sqlToQuery(appendRecipientsSql(group, owner, rows));
+    const q = new PgDialect().sqlToQuery(appendRecipientsSql(group, owner, rows, true));
     return q.sql.replace(/\$(\d+)/g, (_, n) => `'${String(q.params[Number(n) - 1]).replaceAll("'", "''")}'`);
   };
   const transaction = (text: string) => `BEGIN; SELECT id FROM upload_groups WHERE id='${group}' FOR UPDATE; ${text}; COMMIT;`;
@@ -62,6 +62,8 @@ async function main() {
     assert.equal(query("SELECT count(*) FROM shares"), "100");
     assert.equal(query("SELECT count(*) FROM document_key_envelopes"), "100");
     assert.equal(query("SELECT count(*) FROM share_batches"), "1");
+    assert.equal(query("SELECT count(*) FROM copy_fingerprints"), "100");
+    assert.equal(query("SELECT count(DISTINCT profile_id) FROM copy_fingerprints"), "1");
     query("UPDATE upload_groups SET status='DELETING'");
     query(transaction(append([recipient("deleted@example.test")])));
     assert.equal(query("SELECT count(*) FROM shares"), "100");

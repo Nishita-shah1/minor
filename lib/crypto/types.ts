@@ -47,6 +47,7 @@ export type ShareAccessResponse = {
 };
 
 export type DocumentDownloadAccess = {
+  fingerprint?: { recipientWrappedKey: string; profileId: string };
   documentId: string;
   downloadUrl: string;
   wrappedFileKey: string;

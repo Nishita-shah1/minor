@@ -4,8 +4,8 @@ import { sql } from "drizzle-orm";
 // A fresh statement snapshot sees recipients appended by preceding transactions.
 export function appendRecipientsSql(groupId: string, ownerId: string, recipients: Array<{
   id: string; email: string; userId: string | null; status: string;
-  keyVersion: number | null; envelopes: Array<{ documentId: string; wrappedFileKey: string }>;
-}>) {
+  keyVersion: number | null; envelopes: Array<{ documentId: string; wrappedFileKey: string; fingerprint?: {ownerWrappedKey: string; recipientWrappedKey: string; profileId: string} }>;
+}>, fingerprintsEnabled = false) {
   return sql`
     WITH incoming AS (
       SELECT * FROM jsonb_to_recordset(${JSON.stringify(recipients)}::jsonb)
@@ -33,6 +33,12 @@ export function appendRecipientsSql(groupId: string, ownerId: string, recipients
       FROM incoming r JOIN inserted i ON i.id = r.id CROSS JOIN LATERAL jsonb_array_elements(r.envelopes) e
       ON CONFLICT DO NOTHING RETURNING document_id
     )
+    ${fingerprintsEnabled ? sql`, fingerprint_insert AS (
+      INSERT INTO copy_fingerprints (document_id, share_id, owner_wrapped_key, recipient_wrapped_key, profile_id)
+      SELECT (e->>'documentId')::uuid, i.id, e->'fingerprint'->>'ownerWrappedKey', e->'fingerprint'->>'recipientWrappedKey', e->'fingerprint'->>'profileId'
+      FROM incoming r JOIN inserted i ON i.id = r.id CROSS JOIN LATERAL jsonb_array_elements(r.envelopes) e
+      RETURNING id
+    )` : sql``}
     SELECT (SELECT allowed FROM allowance) AS allowed,
       EXISTS(SELECT 1 FROM batch) AS available,
       EXISTS(SELECT 1 FROM batch WHERE email_status = 'SENDING') AS emailing,

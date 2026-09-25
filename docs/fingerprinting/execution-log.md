@@ -44,3 +44,7 @@ Before commit: `npm test` PASS (60 tests/13 files); lint, build, subsequent type
 An initial qualification run lost its output when the independent Playwright suite cleaned `test-results`. The complete run above uses `.fingerprint-results` and survived a repeated E2E run. ESLint initially traversed generated bundles there; its generated-output ignore now matches that directory. Both corrected checks were rerun.
 
 Human readability and blind demonstrations, held-out evaluation, camera testing, and complete privacy/performance qualification remain NOT RUN. No production profile was frozen. Tickets 2–8 remain blocked by ticket 1's failed/missing gates. The working Scan UI is the user-authorized experimental local test surface, not real recipient attribution.
+
+## 4. Explicit experimental integration approval
+
+The user subsequently approved recipient integration despite the failed crop gate and separately approved the Neon migration and local activation. Implementation and focused evidence are recorded in `experimental-integration.md`. This supersedes the earlier integration block only; no qualification claims changed.

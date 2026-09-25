@@ -8,6 +8,7 @@ import { documents, shareBatches, shares, uploadGroups, userKeyBundles } from "@
 import { getAppEnv } from "@/lib/server/env";
 import { json, requireUuid, safeRouteError } from "@/lib/server/http";
 import { createShares } from "@/lib/server/validators";
+import { experimentalFingerprintingEnabled } from "@/lib/fingerprint/server-config";
 import { appendRecipientsSql } from "@/lib/shares/persist";
 import { validateShareSchedule } from "@/lib/shares/schedule";
 
@@ -34,6 +35,8 @@ export async function POST(request: Request, context: RouteContext<"/api/upload-
     if (!existingBatch && scheduleError) return json({ error: { code: "INVALID_SCHEDULE", message: scheduleError } }, { status: 400 });
 
     const ready = input.recipients.filter((recipient) => recipient.status === "READY");
+    const fingerprintsEnabled = experimentalFingerprintingEnabled();
+    if (fingerprintsEnabled && ready.some(recipient => recipient.envelopes.some(envelope => !envelope.fingerprint))) return json({ error: { code: "FINGERPRINT_REQUIRED", message: "Prepare links again to create encrypted copy fingerprints." } }, { status: 409 });
     const userIds = ready.map((recipient) => recipient.clerkUserId);
     if (new Set(userIds).size !== userIds.length) return json({ error: { code: "DUPLICATE_ACCOUNT", message: "Use one verified address per recipient account." } }, { status: 400 });
     const everyEnvelopePresent = ready.every((recipient) => {
@@ -70,7 +73,7 @@ export async function POST(request: Request, context: RouteContext<"/api/upload-
         SELECT ${crypto.randomUUID()}::uuid, id, owner_clerk_user_id, ${input.permission}::share_permission, ${availableFrom?.toISOString() ?? null}::timestamptz, ${expiresAt?.toISOString() ?? null}::timestamptz
         FROM upload_groups WHERE id = ${groupId}::uuid AND owner_clerk_user_id = ${user.userId} AND status = 'READY'
         ON CONFLICT (group_id) DO NOTHING`),
-      db.execute(appendRecipientsSql(groupId, user.userId, recipients)),
+      db.execute(appendRecipientsSql(groupId, user.userId, recipients, fingerprintsEnabled)),
     ]);
     const outcome = results[2].rows[0] as { allowed: boolean; available: boolean; emailing: boolean };
     if (!outcome.available) return json({ error: { code: "NOT_FOUND", message: "Ready upload group not found." } }, { status: 404 });

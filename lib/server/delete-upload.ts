@@ -2,7 +2,8 @@ import "server-only";
 
 import { and, eq, inArray, ne } from "drizzle-orm";
 import { getDb } from "@/lib/db";
-import { documentKeyEnvelopes, documents, shares, uploadGroups } from "@/lib/db/schema";
+import { documentKeyEnvelopes, documents, shares, uploadGroups, copyFingerprints } from "@/lib/db/schema";
+import { experimentalFingerprintingEnabled } from "@/lib/fingerprint/server-config";
 import { deleteEncryptedObject } from "@/lib/r2/objects";
 
 async function eraseDocuments(rows: Array<{ id: string; objectKey: string | null }>) {
@@ -11,6 +12,7 @@ async function eraseDocuments(rows: Array<{ id: string; objectKey: string | null
   if (!ids.length) return;
   await getDb().batch([
     getDb().delete(documentKeyEnvelopes).where(inArray(documentKeyEnvelopes.documentId, ids)),
+    ...(experimentalFingerprintingEnabled() ? [getDb().delete(copyFingerprints).where(inArray(copyFingerprints.documentId, ids))] : []),
     getDb().update(documents).set({
       status: "DELETED",
       r2ObjectKey: null,
