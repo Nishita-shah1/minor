@@ -16,7 +16,8 @@
     "db:studio": "drizzle-kit studio",
     "db:verify": "node scripts/verify-database.mjs",
     "fingerprint:smoke": "node scripts/fingerprint-smoke.mjs",
-    "fingerprint:assets": "node scripts/prepare-fingerprint-assets.mjs"
+    "fingerprint:assets": "node scripts/prepare-fingerprint-assets.mjs",
+    "fingerprint:scan-ui": "node scripts/fingerprint-scan-ui.mjs"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1126.0",

@@ -7,6 +7,7 @@ export type Candidate = { id: string; identifier: Uint8Array };
 export type Investigation = {
   status: "CANDIDATE_MATCH" | "UNKNOWN_MARK" | "NO_RELIABLE_MARK" | "INCONCLUSIVE";
   candidateId?: string;
+  identifier?: string;
   reason?: string;
   coverage: number | null;
   attempts: number;
@@ -34,7 +35,7 @@ export async function investigate(input: {
     const tokens = new Set(identifiers.map(identifierHex));
     if (tokens.size > 1) return { status: "INCONCLUSIVE", reason: "CONFLICTING_IDENTIFIERS", coverage, attempts };
     if (identifiers.length === 0) return { status: attempts ? "NO_RELIABLE_MARK" : "INCONCLUSIVE", reason: attempts ? undefined : "UNSUPPORTED_EVIDENCE", coverage, attempts };
-    return { ...resolveIdentifier(identifiers[0], input.candidates), coverage, attempts };
+    return { ...resolveIdentifier(identifiers[0], input.candidates), identifier: identifierHex(identifiers[0]), coverage, attempts };
   } catch (error) {
     return { status: "INCONCLUSIVE", reason: error instanceof AlignmentError ? error.code : "PROCESSING_FAILED", coverage, attempts };
   }
