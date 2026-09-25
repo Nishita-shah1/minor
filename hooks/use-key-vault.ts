@@ -20,8 +20,9 @@ export function useKeyVault(clerkUserId: string | null | undefined) {
     setState({ status: "CHECKING" });
     try {
       const response = await fetch("/api/key-vault", { cache: "no-store" });
-      if (!response.ok) throw new Error("Could not load your encryption key.");
-      const { bundle } = await response.json() as { bundle: KeyBundleResponse | null };
+      const result = await response.json() as { bundle?: KeyBundleResponse | null; error?: { message?: string } };
+      if (!response.ok) throw new Error(result.error?.message ?? "Could not load your encryption key.");
+      const { bundle } = result;
       if (!bundle) {
         setState({ status: "NEEDS_SETUP" });
         return;

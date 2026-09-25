@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({ user: vi.fn(), send: vi.fn(), batch: vi.fn(), select: vi.fn(), update: vi.fn() }));
-vi.mock("@/lib/auth/current-verified-user", () => ({ requireVerifiedUser: mocks.user, AuthenticationError: class extends Error {} }));
+vi.mock("@/lib/auth/current-verified-user", () => ({ requireVerifiedUser: mocks.user, AuthenticationError: class extends Error {}, IdentityProviderUnavailableError: class extends Error {} }));
 vi.mock("@/lib/db", () => ({ getDb: () => ({ select: mocks.select, update: mocks.update, batch: mocks.batch }) }));
 vi.mock("@/lib/email/brevo", () => ({ sendShareEmailBatch: mocks.send }));
 vi.mock("@/lib/server/env", () => ({ getAppEnv: () => ({ APP_URL: "https://example.test" }) }));

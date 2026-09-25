@@ -1,4 +1,4 @@
-import { AuthenticationError } from "@/lib/auth/current-verified-user";
+import { AuthenticationError, IdentityProviderUnavailableError } from "@/lib/auth/current-verified-user";
 import { z } from "zod";
 
 export class RequestValidationError extends Error {}
@@ -28,7 +28,13 @@ export function safeRouteError(error: unknown) {
   if (error instanceof RequestValidationError) {
     return json({ error: { code: "INVALID_IDENTIFIER", message: error.message } }, { status: 400 });
   }
-  console.error("EchoLeaks route failed", error instanceof Error ? error.message : "Unknown error");
+  if (error instanceof IdentityProviderUnavailableError) {
+    console.error("EchoLeaks account verification unavailable");
+    return json({ error: { code: "IDENTITY_PROVIDER_UNAVAILABLE", message: error.message } }, { status: 503 });
+  }
+  console.error("EchoLeaks route failed", error instanceof Error
+    ? { name: error.name, message: error.message || "No error message", cause: error.cause instanceof Error ? error.cause.name : undefined }
+    : { name: typeof error });
   return json(
     { error: { code: "INTERNAL_ERROR", message: "The request could not be completed." } },
     { status: 500 },

@@ -38,6 +38,7 @@ export function InvitationClaim({ shareId, vault }: { shareId: string; vault: Re
     <h1 className="font-head text-3xl">Set up secure access</h1>
     <p className="max-w-md">This creates an encryption key on this device so EchoLeaks can open files shared with you.</p>
     {vault.state.status === "READY" ? <button disabled={busy} onClick={() => void open()} className="rounded-full border-2 border-black bg-primary px-6 py-3 font-head shadow-md disabled:opacity-50">{busy ? "Preparing…" : "Open protected document"}</button>
+      : vault.state.status === "ERROR" ? <><p role="alert" className="text-destructive">{vault.state.message}</p><button onClick={() => void vault.refresh()} className="rounded-full border-2 border-black bg-primary px-6 py-3 font-head shadow-md">Try again</button></>
       : <button disabled={vault.state.status === "CHECKING"} onClick={() => setVaultOpen(true)} className="rounded-full border-2 border-black bg-primary px-6 py-3 font-head shadow-md disabled:opacity-50">{vault.state.status === "NEEDS_SETUP" ? "Create secure key" : "Unlock secure key"}</button>}
     <label className="w-full max-w-md text-sm">If the email link lost its code, paste the full invitation link or claim code
       <input value={code} onChange={event => setCode(event.target.value)} className="mt-2 w-full rounded-xl border-2 border-black bg-card p-3" autoComplete="off" />
