@@ -104,7 +104,7 @@ function DocumentPages({ bytes, metadata, fingerprintId, shareId, documentId }: 
     return () => { cancelled = true; epochRef.current++; clearInterval(timer); clearInterval(deadline); document.removeEventListener("visibilitychange", cover); document.removeEventListener("fullscreenchange", cover); window.removeEventListener("online", cover); window.removeEventListener("offline", cover); window.removeEventListener("pageshow", cover); window.removeEventListener("pagehide", cover); };
   }, [fingerprintId, shareId, documentId]);
   const covered = !!fingerprintId && (!authorized || !full || !visible);
-  const button = "rounded-full border-2 border-black bg-primary px-4 py-2 font-bold disabled:opacity-40";
+  const button = "rounded-full border-2 border-black bg-primary text-primary-foreground px-4 py-2 font-bold disabled:opacity-40";
   function navigate(next: number) { setPixels(null); setBusy(true); setError(""); setPage(next); }
   return <div ref={root} className="space-y-4 overflow-auto rounded-xl bg-background p-3">
     <div className="flex flex-wrap items-center justify-center gap-3 print:hidden">

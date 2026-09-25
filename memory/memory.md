@@ -13,6 +13,8 @@ Updated 2026-09-25. Keep this a short status snapshot; `ARCHITECTURE.md` is the 
 - TrustMark Q/BCH_SUPER profile `trustmark-q-lab-v2` uses pinned ONNX assets and a browser worker with WebGPU or local WASM fallback. It is experimental and **not qualified**. `lib/fingerprint/`, `workers/fingerprint.worker.ts`, `scripts/prepare-fingerprint-assets.mjs`.
 - Database tables and migrations are in `lib/db/schema.ts` and `drizzle/` (through `0004`); `EXPERIMENTAL_FINGERPRINTING` is opt-in (`.env.example` defaults false). The local Neon migration/flag was previously approved; do not assume any other environment is migrated or enabled.
 - Neobrutalist cream/yellow/black UI with rounded controls in `app/globals.css`; landing uses animated WebP for visible hero motion and optional native audio in `components/landing/hero-section.tsx`.
+- Light/dark theme uses `next-themes`, Framer Motion, and `components/theme/`; the rounded toggle appears in the dashboard, landing/auth navigation, and share view. Scan shows a 100% indicator only for exact fingerprint ID equality, not recipient culpability.
+- `components/dashboard/persistent-workspaces.tsx` retains visited Dashboard, Upload, Scan, History, and Profile UI in the current tab across route changes; Scan images/results, upload queues, drafts, and scroll positions clear on refresh, dashboard exit, or account/session change. History and recipient records refresh on return. `npm run test:workspace-state` uses synthetic local fixtures.
 - Installable PWA: `app/manifest.ts`, `components/pwa/`, and `public/sw.js`; the landing shows an install card. The worker caches only public offline UI/icons, so account, sharing, and protected viewing still need a connection.
 
 ## Current limits and evidence

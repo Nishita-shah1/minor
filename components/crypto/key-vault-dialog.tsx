@@ -1,5 +1,7 @@
 "use client";
 
+import { useWorkspaceActive } from "@/components/dashboard/workspace-activity";
+
 import { KeyRound, LoaderCircle } from "lucide-react";
 import { useState } from "react";
 import {
@@ -21,6 +23,7 @@ type Props = {
 };
 
 export function KeyVaultDialog({ open, onOpenChange, state, onSetup, onUnlock }: Props) {
+  const active = useWorkspaceActive();
   const [passphrase, setPassphrase] = useState("");
   const [confirmation, setConfirmation] = useState("");
   const [busy, setBusy] = useState(false);
@@ -46,10 +49,10 @@ export function KeyVaultDialog({ open, onOpenChange, state, onSetup, onUnlock }:
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open && active} onOpenChange={onOpenChange}>
       <DialogContent className="rounded-2xl border-2 border-black bg-card shadow-lg sm:max-w-md">
         <DialogHeader>
-          <span className="flex size-11 items-center justify-center rounded-full border-2 border-black bg-primary shadow-sm">
+          <span className="flex size-11 items-center justify-center rounded-full border-2 border-black bg-primary text-primary-foreground shadow-sm">
             <KeyRound className="size-5" aria-hidden="true" />
           </span>
           <DialogTitle className="font-head text-xl">
@@ -91,7 +94,7 @@ export function KeyVaultDialog({ open, onOpenChange, state, onSetup, onUnlock }:
           type="button"
           disabled={busy}
           onClick={() => void submit()}
-          className="flex min-h-12 items-center justify-center gap-2 rounded-full border-2 border-black bg-primary px-5 font-head shadow-md transition-transform hover:-translate-y-0.5 disabled:opacity-50"
+          className="flex min-h-12 items-center justify-center gap-2 rounded-full border-2 border-black bg-primary text-primary-foreground px-5 font-head shadow-md transition-transform hover:-translate-y-0.5 disabled:opacity-50"
         >
           {busy && <LoaderCircle className="size-4 animate-spin" aria-hidden="true" />}
           {busy ? "Working locally…" : isSetup ? "Create secure key" : "Unlock locally"}

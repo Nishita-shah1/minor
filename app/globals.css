@@ -194,7 +194,7 @@
 .text-hollow {
   color: transparent;
   -webkit-text-fill-color: transparent;
-  -webkit-text-stroke: 2px #000;
+  -webkit-text-stroke: 2px var(--foreground);
   paint-order: stroke fill;
 }
 
@@ -222,4 +222,20 @@
   border-radius: 1rem;
   border: 2px solid var(--border);
   box-shadow: var(--shadow-md);
+}
+
+/* Theme only interface surfaces: never filter protected document pixels. */
+@layer base {
+  @media (prefers-reduced-motion: no-preference) {
+    body, header, aside, nav, main, section, article,
+    button, input, textarea, select, [data-slot="sidebar-inner"] {
+      transition-property: background-color, color, border-color;
+      transition-duration: 180ms;
+    }
+  }
+}
+
+::selection {
+  background: var(--primary);
+  color: var(--primary-foreground);
 }

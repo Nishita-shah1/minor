@@ -4,6 +4,7 @@ import type { Metadata } from "next";
 import { Archivo_Black, Space_Grotesk } from "next/font/google";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { ServiceWorkerRegistration } from "@/components/pwa/service-worker-registration";
+import { ThemeProvider } from "@/components/theme/theme-provider";
 import "./globals.css";
 
 const archivoBlack = Archivo_Black({
@@ -37,23 +38,26 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html
       lang="en"
+      suppressHydrationWarning
       className={`${archivoBlack.variable} ${spaceGrotesk.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col">
-        <ClerkProvider
-          signInFallbackRedirectUrl="/dashboard"
-          signUpFallbackRedirectUrl="/dashboard"
-          appearance={{
-            theme: shadcn,
-            elements: {
-              modalBackdrop: "clerk-modal-backdrop",
-              modalContent: "clerk-modal-content",
-            },
-          }}
-        >
-          <ServiceWorkerRegistration />
-          <TooltipProvider>{children}</TooltipProvider>
-        </ClerkProvider>
+        <ThemeProvider>
+          <ClerkProvider
+            signInFallbackRedirectUrl="/dashboard"
+            signUpFallbackRedirectUrl="/dashboard"
+            appearance={{
+              theme: shadcn,
+              elements: {
+                modalBackdrop: "clerk-modal-backdrop",
+                modalContent: "clerk-modal-content",
+              },
+            }}
+          >
+            <ServiceWorkerRegistration />
+            <TooltipProvider>{children}</TooltipProvider>
+          </ClerkProvider>
+        </ThemeProvider>
       </body>
     </html>
   );

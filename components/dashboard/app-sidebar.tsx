@@ -120,13 +120,14 @@ function SidebarAccount() {
     <div className="flex flex-col gap-3">
       <Link
         href="/dashboard/profile"
+        scroll={false}
         onClick={closeMobileSidebar}
         aria-label={`Open profile for ${displayName}`}
         className="flex min-w-0 items-center gap-3 rounded-2xl border-2 border-black bg-card p-3 shadow-sm transition-all hover:-translate-x-0.5 hover:-translate-y-0.5 hover:bg-accent hover:shadow-md focus-visible:outline-2 focus-visible:outline-offset-2 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:rounded-full group-data-[collapsible=icon]:p-0"
       >
-        <Avatar className="border-black bg-primary shadow-xs">
+        <Avatar className="border-black bg-primary text-primary-foreground shadow-xs">
           <AvatarImage src={user.imageUrl} alt={`${displayName} profile photo`} />
-          <AvatarFallback className="bg-primary text-black">
+          <AvatarFallback className="bg-primary text-primary-foreground ">
             {getInitials(displayName) || "E"}
           </AvatarFallback>
         </Avatar>
@@ -140,7 +141,7 @@ function SidebarAccount() {
       <SignOutButton redirectUrl="/">
         <button
           type="button"
-          className="flex h-12 w-full items-center justify-center gap-2 rounded-full border-2 border-black bg-card px-4 font-head text-sm shadow-sm transition-all hover:-translate-x-0.5 hover:-translate-y-0.5 hover:bg-primary hover:shadow-md focus-visible:outline-2 focus-visible:outline-offset-2 active:translate-x-0.5 active:translate-y-0.5 active:shadow-none group-data-[collapsible=icon]:size-9 group-data-[collapsible=icon]:p-0"
+          className="flex h-12 w-full items-center justify-center gap-2 rounded-full border-2 border-black bg-card px-4 font-head text-sm shadow-sm transition-all hover:-translate-x-0.5 hover:-translate-y-0.5 hover:bg-primary hover:text-primary-foreground hover:shadow-md focus-visible:outline-2 focus-visible:outline-offset-2 active:translate-x-0.5 active:translate-y-0.5 active:shadow-none group-data-[collapsible=icon]:size-9 group-data-[collapsible=icon]:p-0"
         >
           <LogOut aria-hidden="true" className="size-4 shrink-0" />
           <span className="group-data-[collapsible=icon]:sr-only">Sign out</span>
@@ -164,11 +165,12 @@ export function AppSidebar() {
         <div className="flex h-12 items-center justify-between gap-2 group-data-[collapsible=icon]:justify-center">
           <Link
             href="/dashboard"
+            scroll={false}
             onClick={closeMobileSidebar}
             className="flex min-w-0 items-center gap-2 rounded-lg focus-visible:outline-2 focus-visible:outline-offset-2 group-data-[collapsible=icon]:hidden"
             aria-label="EchoLeaks dashboard"
           >
-            <span className="flex size-9 shrink-0 items-center justify-center rounded-full border-2 border-black bg-primary shadow-xs">
+            <span className="flex size-9 shrink-0 items-center justify-center rounded-full border-2 border-black bg-primary text-primary-foreground shadow-xs">
               <Image
                 src="/io.github.lo2dev.Echo.svg"
                 alt=""
@@ -206,11 +208,12 @@ export function AppSidebar() {
                     >
                       <Link
                         href={route.href}
+                        scroll={false}
                         onClick={closeMobileSidebar}
                         aria-current={isActive ? "page" : undefined}
                       >
                         <span
-                          className={`flex size-9 shrink-0 items-center justify-center rounded-full border-2 border-black group-data-[collapsible=icon]:size-8 ${route.iconClassName}`}
+                          className={`flex size-9 shrink-0 items-center justify-center rounded-full border-2 border-black text-black group-data-[collapsible=icon]:size-8 ${route.iconClassName}`}
                         >
                           <Icon aria-hidden="true" strokeWidth={2.3} />
                         </span>

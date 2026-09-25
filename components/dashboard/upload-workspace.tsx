@@ -2,7 +2,7 @@
 
 import { useUser } from "@clerk/nextjs";
 import { ArrowDown, ArrowUp, FileText, LoaderCircle, LockKeyhole, Plus, RotateCcw, ShieldCheck, Trash2, UploadCloud, X } from "lucide-react";
-import { useRef, useState } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 import { KeyVaultDialog } from "@/components/crypto/key-vault-dialog";
 import { SharePanel } from "@/components/dashboard/share-panel";
 import { useKeyVault } from "@/hooks/use-key-vault";
@@ -22,6 +22,13 @@ function formatFileSize(bytes: number) {
 }
 
 export function UploadWorkspace() {
+  const lifetime = useRef<AbortController | null>(null);
+  useLayoutEffect(() => {
+    const controller = new AbortController();
+    lifetime.current = controller;
+    return () => controller.abort();
+  }, []);
+  const request = (url: string, init?: RequestInit) => fetch(url, { ...init, signal: lifetime.current?.signal });
   const inputRef = useRef<HTMLInputElement>(null);
   const { user } = useUser();
   const vault = useKeyVault(user?.id);
@@ -50,21 +57,21 @@ export function UploadWorkspace() {
 
   const processItem = async (item: QueueItem, documentId: string, group: GroupConfig, retry = false) => {
     if (retry) {
-      const retryResponse = await fetch(`/api/documents/${documentId}/retry`, { method: "POST" });
+      const retryResponse = await request(`/api/documents/${documentId}/retry`, { method: "POST" });
       const retryState = await retryResponse.json();
       if (!retryResponse.ok) throw new Error(retryState.error?.message ?? "Could not retry this file.");
       if (retryState.alreadyReady) { updateItem(item.id, { documentId, phase: "READY", message: "Protected" }); return; }
     }
     updateItem(item.id, { documentId, phase: "PREPARING", message: "Preparing" });
-    const urlResponse = await fetch(`/api/documents/${documentId}/upload-url`, { method: "POST" });
+    const urlResponse = await request(`/api/documents/${documentId}/upload-url`, { method: "POST" });
     const url = await urlResponse.json();
     if (!urlResponse.ok) throw new Error(url.error?.message ?? "Could not prepare encrypted storage.");
     updateItem(item.id, { phase: "ENCRYPTING", message: "Encrypting locally" });
     const encrypted = await encryptAndUpload({
       file: item.file, documentId, uploadUrl: url.uploadUrl,
       ownerPublicKeyJwk: group.ownerPublicKeyJwk, ownerKeyVersion: group.ownerKeyVersion,
-    }, (phase) => { if (phase === "UPLOADING") updateItem(item.id, { phase: "UPLOADING", message: "Uploading ciphertext" }); });
-    const completeResponse = await fetch(`/api/documents/${documentId}/complete`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...encrypted, cryptoVersion: group.cryptoVersion }) });
+    }, (phase) => { if (phase === "UPLOADING") updateItem(item.id, { phase: "UPLOADING", message: "Uploading ciphertext" }); }, lifetime.current?.signal);
+    const completeResponse = await request(`/api/documents/${documentId}/complete`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...encrypted, cryptoVersion: group.cryptoVersion }) });
     const completed = await completeResponse.json();
     if (!completeResponse.ok) throw new Error(completed.error?.message ?? "Could not finalize this file.");
     updateItem(item.id, { phase: "READY", message: "Protected" });
@@ -76,7 +83,7 @@ export function UploadWorkspace() {
     if (vault.state.status !== "READY") { setVaultOpen(true); return; }
     setBusy(true); setMessage("Creating private upload slots…");
     try {
-      const response = await fetch("/api/upload-groups", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ fileCount: items.length }) });
+      const response = await request("/api/upload-groups", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ fileCount: items.length }) });
       const body = await response.json();
       if (!response.ok) throw new Error(body.error?.message ?? "Could not create the upload group.");
       const group: GroupConfig = { groupId: body.groupId, ownerPublicKeyJwk: body.ownerPublicKeyJwk, ownerKeyVersion: body.ownerKeyVersion, cryptoVersion: body.cryptoVersion };
@@ -86,9 +93,10 @@ export function UploadWorkspace() {
         const documentId = body.documents[index].documentId as string;
         try { await processItem(item, documentId, group); }
         catch (error) {
+          if (lifetime.current?.signal.aborted) throw error;
           failures += 1;
           updateItem(item.id, { documentId, phase: "FAILED", message: error instanceof Error ? error.message : "Protection failed" });
-          await fetch(`/api/documents/${documentId}/fail`, { method: "POST" }).catch(() => undefined);
+          await request(`/api/documents/${documentId}/fail`, { method: "POST" }).catch(() => undefined);
         }
       }
       if (failures) setMessage(`${items.length - failures} / ${items.length} protected. Retry or remove failed files.`);
@@ -106,7 +114,7 @@ export function UploadWorkspace() {
       if (!remainingFailures) { setGroupReady(true); setMessage("All files are protected."); }
     } catch (error) {
       updateItem(item.id, { phase: "FAILED", message: error instanceof Error ? error.message : "Retry failed" });
-      await fetch(`/api/documents/${item.documentId}/fail`, { method: "POST" }).catch(() => undefined);
+      await request(`/api/documents/${item.documentId}/fail`, { method: "POST" }).catch(() => undefined);
     } finally { setBusy(false); }
   };
 
@@ -114,7 +122,7 @@ export function UploadWorkspace() {
     if (!config || !readyCount || busy) return;
     setBusy(true);
     try {
-      const response = await fetch(`/api/upload-groups/${config.groupId}/continue`, { method: "POST" });
+      const response = await request(`/api/upload-groups/${config.groupId}/continue`, { method: "POST" });
       const body = await response.json();
       if (!response.ok) throw new Error(body.error?.message ?? "Could not finalize the successful files.");
       setItems((current) => current.map((item) => item.phase === "FAILED" ? { ...item, phase: "DELETED", message: "Removed" } : item));
@@ -125,14 +133,14 @@ export function UploadWorkspace() {
 
   const deleteDocument = async (item: QueueItem) => {
     if (!item.documentId || !confirm(`Remove ${item.file.name} from this protected group?`)) return;
-    const response = await fetch(`/api/documents/${item.documentId}`, { method: "DELETE" });
+    const response = await request(`/api/documents/${item.documentId}`, { method: "DELETE" });
     if (response.ok) { updateItem(item.id, { phase: "DELETED", message: "Removed by owner" }); if (readyCount === 1) setGroupReady(false); }
     else setMessage("The encrypted file could not be deleted. Try again.");
   };
 
   const deleteGroup = async () => {
     if (!config || !confirm("Delete every encrypted file and revoke every link in this group?")) return;
-    const response = await fetch(`/api/upload-groups/${config.groupId}`, { method: "DELETE" });
+    const response = await request(`/api/upload-groups/${config.groupId}`, { method: "DELETE" });
     if (response.ok) { setItems((current) => current.map((item) => ({ ...item, phase: "DELETED", message: "Removed by owner" }))); setGroupReady(false); setMessage("Encrypted files and cryptographic access material were removed. Minimal audit metadata may remain."); }
     else setMessage("Deletion is incomplete and access remains blocked. Try again.");
   };
@@ -140,21 +148,21 @@ export function UploadWorkspace() {
   const move = (index: number, direction: -1 | 1) => setItems((current) => { const next = [...current]; const target = index + direction; if (target < 0 || target >= next.length) return current; [next[index], next[target]] = [next[target], next[index]]; return next; });
 
   return (
-    <section className="min-h-svh px-5 py-5 sm:px-7 lg:px-10">
+    <section className="min-h-[calc(100svh-4rem)] px-5 pt-2 pb-5 sm:px-7 lg:px-10">
       <div className="mx-auto w-full max-w-6xl">
         <header><p className="text-xs font-bold tracking-[0.2em] text-muted-foreground uppercase">Protect files</p><h1 className="mt-1 font-head text-4xl sm:text-5xl">Upload</h1></header>
-        <div className="mt-4 rounded-2xl border-2 border-black bg-primary p-4 shadow-md"><div className="flex items-center gap-3"><span className="flex size-10 items-center justify-center rounded-full border-2 border-black bg-card"><ShieldCheck className="size-5" /></span><div><h2 className="font-head text-xl">Protect a file group</h2><p className="text-sm">Every file is encrypted locally with its own key.</p></div></div></div>
+        <div className="mt-4 rounded-2xl border-2 border-black bg-primary text-primary-foreground p-4 shadow-md"><div className="flex items-center gap-3"><span className="flex size-10 items-center justify-center rounded-full border-2 border-black bg-card text-card-foreground"><ShieldCheck className="size-5" /></span><div><h2 className="font-head text-xl">Protect a file group</h2><p className="text-sm">Every file is encrypted locally with its own key.</p></div></div></div>
         <h2 className="mt-6 font-head text-2xl">1. Add and review files</h2>
         <div className="mt-3 rounded-2xl border-[3px] border-dashed border-black bg-card p-4">
           <input ref={inputRef} type="file" multiple className="sr-only" disabled={busy || !!config} onChange={(event) => { addFiles(Array.from(event.currentTarget.files ?? [])); event.currentTarget.value = ""; }} />
-          {!items.length ? <button type="button" onClick={() => inputRef.current?.click()} className="flex min-h-36 w-full flex-col items-center justify-center rounded-2xl"><UploadCloud className="size-10" /><span className="mt-2 font-head text-xl">Choose up to 10 files</span><span className="text-sm text-muted-foreground">25 MiB each · 100 MiB total</span></button> : <div className="space-y-2">{items.map((item, index) => <div key={item.id} className="flex items-center gap-2 rounded-xl border-2 border-black bg-background p-3"><FileText className="size-5 shrink-0" /><div className="min-w-0 flex-1"><p className="truncate font-bold">{item.file.name}</p><p className="text-xs text-muted-foreground">{formatFileSize(item.file.size)} · {item.message}</p></div>{!config && <><button type="button" aria-label="Move up" onClick={() => move(index, -1)} className="rounded-full border-2 border-black p-2"><ArrowUp className="size-4" /></button><button type="button" aria-label="Move down" onClick={() => move(index, 1)} className="rounded-full border-2 border-black p-2"><ArrowDown className="size-4" /></button><button type="button" aria-label={`Remove ${item.file.name}`} onClick={() => setItems((current) => current.filter((candidate) => candidate.id !== item.id))} className="rounded-full border-2 border-black p-2"><X className="size-4" /></button></>}{item.phase === "FAILED" && <button type="button" disabled={busy} onClick={() => void retry(item)} className="flex items-center gap-1 rounded-full border-2 border-black bg-primary px-3 py-2 font-bold"><RotateCcw className="size-4" /> Retry</button>}{groupReady && item.phase === "READY" && <button type="button" onClick={() => void deleteDocument(item)} className="rounded-full border-2 border-black bg-destructive p-2" aria-label={`Delete ${item.file.name}`}><Trash2 className="size-4" /></button>}{activePhases.includes(item.phase) && <LoaderCircle className="size-5 animate-spin" />}</div>)}</div>}
+          {!items.length ? <button type="button" onClick={() => inputRef.current?.click()} className="flex min-h-36 w-full flex-col items-center justify-center rounded-2xl"><UploadCloud className="size-10" /><span className="mt-2 font-head text-xl">Choose up to 10 files</span><span className="text-sm text-muted-foreground">25 MiB each · 100 MiB total</span></button> : <div className="space-y-2">{items.map((item, index) => <div key={item.id} className="flex items-center gap-2 rounded-xl border-2 border-black bg-background p-3"><FileText className="size-5 shrink-0" /><div className="min-w-0 flex-1"><p className="truncate font-bold">{item.file.name}</p><p className="text-xs text-muted-foreground">{formatFileSize(item.file.size)} · {item.message}</p></div>{!config && <><button type="button" aria-label="Move up" onClick={() => move(index, -1)} className="rounded-full border-2 border-black p-2"><ArrowUp className="size-4" /></button><button type="button" aria-label="Move down" onClick={() => move(index, 1)} className="rounded-full border-2 border-black p-2"><ArrowDown className="size-4" /></button><button type="button" aria-label={`Remove ${item.file.name}`} onClick={() => setItems((current) => current.filter((candidate) => candidate.id !== item.id))} className="rounded-full border-2 border-black p-2"><X className="size-4" /></button></>}{item.phase === "FAILED" && <button type="button" disabled={busy} onClick={() => void retry(item)} className="flex items-center gap-1 rounded-full border-2 border-black bg-primary text-primary-foreground px-3 py-2 font-bold"><RotateCcw className="size-4" /> Retry</button>}{groupReady && item.phase === "READY" && <button type="button" onClick={() => void deleteDocument(item)} className="rounded-full border-2 border-black bg-destructive text-destructive-foreground p-2" aria-label={`Delete ${item.file.name}`}><Trash2 className="size-4" /></button>}{activePhases.includes(item.phase) && <LoaderCircle className="size-5 animate-spin" />}</div>)}</div>}
           {!config && items.length > 0 && <div className="mt-3 flex flex-wrap items-center justify-between gap-2"><button type="button" onClick={() => inputRef.current?.click()} className="flex items-center gap-2 rounded-full border-2 border-black bg-background px-4 py-2 font-bold"><Plus className="size-4" /> Add another file</button><span className="text-xs font-bold text-muted-foreground">{formatFileSize(items.reduce((sum, item) => sum + item.file.size, 0))} / 100 MiB</span></div>}
         </div>
-        {!config && <button type="button" disabled={!items.length || busy} onClick={() => void protect()} className="mt-4 flex min-h-14 w-full items-center justify-center gap-2 rounded-2xl border-[3px] border-black bg-primary font-head text-lg shadow-md disabled:opacity-45"><LockKeyhole className="size-5" /> Protect {items.length || ""} {items.length === 1 ? "file" : "files"}</button>}
+        {!config && <button type="button" disabled={!items.length || busy} onClick={() => void protect()} className="mt-4 flex min-h-14 w-full items-center justify-center gap-2 rounded-2xl border-[3px] border-black bg-primary text-primary-foreground font-head text-lg shadow-md disabled:opacity-45"><LockKeyhole className="size-5" /> Protect {items.length || ""} {items.length === 1 ? "file" : "files"}</button>}
         {config && <p className="mt-3 font-bold">{readyCount} / {items.filter((item) => item.phase !== "DELETED").length} protected</p>}
-        {failedCount > 0 && readyCount > 0 && <button type="button" disabled={busy} onClick={() => void continueWithoutFailed()} className="mt-3 rounded-full border-2 border-black bg-primary px-5 py-2.5 font-bold shadow-sm">Remove failed files and continue</button>}
+        {failedCount > 0 && readyCount > 0 && <button type="button" disabled={busy} onClick={() => void continueWithoutFailed()} className="mt-3 rounded-full border-2 border-black bg-primary text-primary-foreground px-5 py-2.5 font-bold shadow-sm">Remove failed files and continue</button>}
         <p className="mt-3 min-h-6 text-sm text-muted-foreground" aria-live="polite">{message}</p>
-        {config && groupReady && vault.state.status === "READY" && <><SharePanel groupId={config.groupId} privateKey={vault.state.privateKey} /><button type="button" onClick={() => void deleteGroup()} className="mt-4 rounded-full border-2 border-black bg-destructive px-5 py-2.5 font-bold shadow-sm"><Trash2 className="mr-2 inline size-4" /> Delete protected group</button></>}
+        {config && groupReady && vault.state.status === "READY" && <><SharePanel groupId={config.groupId} privateKey={vault.state.privateKey} /><button type="button" onClick={() => void deleteGroup()} className="mt-4 rounded-full border-2 border-black bg-destructive text-destructive-foreground px-5 py-2.5 font-bold shadow-sm"><Trash2 className="mr-2 inline size-4" /> Delete protected group</button></>}
         <KeyVaultDialog open={vaultOpen} onOpenChange={setVaultOpen} state={vault.state} onSetup={vault.setup} onUnlock={vault.unlock} />
       </div>
     </section>

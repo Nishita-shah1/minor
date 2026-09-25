@@ -31,6 +31,12 @@ Routes: `/` is the public landing page (`components/landing/hero-section.tsx`, a
 
 The app is installable through `app/manifest.ts`, the icons in `public/pwa/`, and `public/sw.js`. The landing install card uses the browser prompt where available and manual steps in supported browsers without an offered prompt. The service worker caches only the public offline page and icons; all navigation stays network-first and falls back to `public/offline.html` when disconnected. Account, share, API, and decrypted document data are never stored in its cache, so those workflows require connectivity.
 
+## Dashboard workspace lifetime
+
+`components/dashboard/persistent-workspaces.tsx` retains the five visited dashboard views in the authenticated shared layout. Scan images/results, Upload queues, sharing drafts, and DOM state survive sidebar and browser history navigation within the dashboard. Hidden workspaces remain mounted so initiated local scans/uploads can finish; portal dialogs are visibility-gated. Workspace state lives only in this tab's memory and is discarded on refresh, leaving the dashboard layout, sign-out, or account/session change. This does not add plaintext to IndexedDB, localStorage, the service worker, or a server cache.
+
+History/share metadata and Scan recipient records refresh when their workspace is reactivated. Scan retains its result when the recipient snapshot is unchanged and requires another scan if the records changed. Upload requests/workers are aborted when the retained workspace unmounts. `npm run test:workspace-state` exercises the real workspace components with synthetic authentication, API records, and decoder results; it tests UI lifetime, not fingerprint reliability.
+
 ## Keys, encrypted files, and records
 
 `hooks/use-key-vault.ts` and `components/crypto/key-vault-dialog.tsx` manage a user RSA keypair. The private key is available locally as a nonextractable IndexedDB key; an Argon2id-encrypted private-key backup and public key live in `user_key_bundles`. The server never uses the private key to decrypt files.

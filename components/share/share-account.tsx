@@ -1,10 +1,11 @@
 "use client";
 
+import { ThemeToggle } from "@/components/theme/theme-toggle";
 import { UserButton, useUser } from "@clerk/nextjs";
 
 export function ShareAccount() {
   const { user } = useUser();
-  if (!user) return null;
+  if (!user) return <div className="fixed right-4 top-4 z-40"><ThemeToggle /></div>;
 
   const label = user.fullName || user.primaryEmailAddress?.emailAddress || user.id;
 
@@ -14,6 +15,7 @@ export function ShareAccount() {
         <span className="block truncate text-xs font-bold">{label}</span>
         <span className="block truncate text-[10px] text-muted-foreground">{user.id}</span>
       </span>
+      <ThemeToggle />
       <UserButton
         appearance={{ elements: { avatarBox: "size-9 rounded-full border-2 border-black" } }}
       />

@@ -10,7 +10,7 @@ export default async function SharePage({ params }: { params: Promise<{ shareId:
   const session = await auth();
   if (!session.isAuthenticated) {
     return (
-      <><InvitationCapture shareId={shareId} />
+      <><InvitationCapture shareId={shareId} /><ShareAccount />
       <main className="flex min-h-svh flex-col items-center justify-center gap-5 bg-background px-5">
         <LockKeyhole className="size-12" />
         <h1 className="font-head text-3xl">Protected file</h1>
@@ -19,7 +19,7 @@ export default async function SharePage({ params }: { params: Promise<{ shareId:
         </p>
         <Link
           href={`/sign-in?redirect_url=${encodeURIComponent(`/share/${shareId}`)}`}
-          className="rounded-full border-2 border-black bg-primary px-6 py-3 font-head shadow-md"
+          className="rounded-full border-2 border-black bg-primary text-primary-foreground px-6 py-3 font-head shadow-md"
         >
           Sign in to continue
         </Link>

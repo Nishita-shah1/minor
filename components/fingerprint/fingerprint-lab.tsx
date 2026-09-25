@@ -6,7 +6,7 @@ import { identifierHex } from "@/lib/fingerprint/identity";
 import { renderLocalFile, syntheticPage } from "@/lib/fingerprint/lab/render";
 import type { Pixels } from "@/lib/fingerprint/types";
 
-const button = "rounded-full border-2 border-black bg-primary px-5 py-2 font-bold shadow-md disabled:opacity-40";
+const button = "rounded-full border-2 border-black bg-primary text-primary-foreground px-5 py-2 font-bold shadow-md disabled:opacity-40";
 
 export function FingerprintLab() {
   const canvas = useRef<HTMLCanvasElement>(null);

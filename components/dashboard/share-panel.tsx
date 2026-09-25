@@ -1,5 +1,6 @@
 "use client";
 
+import { useWorkspaceActive } from "./workspace-activity";
 import { LoaderCircle, Trash2, Upload } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { CreatedShare, ShareLinksDialog } from "@/components/dashboard/share-links-dialog";
@@ -14,6 +15,7 @@ import { validateShareSchedule } from "@/lib/shares/schedule";
 type OwnerAccess = { fingerprintOwnerPublicKey?: JsonWebKey; existingFingerprints?: Array<{documentId: string; ownerWrappedKey: string}>; files: Array<{ documentId: string; status: string; wrappedFileKey: string | null }> };
 
 export function SharePanel({ groupId, privateKey }: { groupId: string; privateKey?: CryptoKey }) {
+  const active = useWorkspaceActive();
   const [loadingLinks, setLoadingLinks] = useState(true);
   const [savedSchedule, setSavedSchedule] = useState("");
   const fileRef = useRef<HTMLInputElement>(null);
@@ -47,6 +49,7 @@ export function SharePanel({ groupId, privateKey }: { groupId: string; privateKe
     return () => { cancelled = true; };
   }, [privateKey, shares]);
   useEffect(() => {
+    if (!active) return;
     let cancelled = false;
     fetch(`/api/upload-groups/${groupId}/shares`, { cache: "no-store" }).then(async response => {
       const body = await response.json();
@@ -55,7 +58,7 @@ export function SharePanel({ groupId, privateKey }: { groupId: string; privateKe
     }).catch(error => { if (!cancelled) setMessage(error.message); })
       .finally(() => { if (!cancelled) setLoadingLinks(false); });
     return () => { cancelled = true; };
-  }, [groupId]);
+  }, [groupId, active]);
   const reopenLinks = async () => {
     setBusy(true);
     try {
@@ -175,19 +178,19 @@ export function SharePanel({ groupId, privateKey }: { groupId: string; privateKe
       <h2 className="font-head text-xl">2. Share securely</h2>
       <p className="mt-1 text-sm text-muted-foreground">Add up to 100 emails manually or from CSV, TXT, or XLSX.</p>
       {loadingLinks && <p role="status">Loading existing secure links…</p>}
-      {batchId && <div className="mt-4 rounded-xl border-2 border-black bg-background p-3"><p className="font-bold">{shares.length} existing recipient{shares.length === 1 ? "" : "s"}</p><p className="my-2 text-sm">{shares.map(share => share.recipientEmail).join(", ")}</p><button type="button" disabled={busy} onClick={() => void reopenLinks()} className="rounded-full border-2 border-black bg-primary px-5 py-2.5 font-bold shadow-sm">View secure links</button><p className="mt-2 text-sm">Add recipients below. Existing permission and access times are preserved.</p>{shares.some(share => share.status === "AWAITING_RECIPIENT_KEY") && <button type="button" disabled={busy || !privateKey} onClick={() => void create()} className="mt-3 rounded-full border-2 border-black bg-primary px-5 py-2 font-bold disabled:opacity-40">Finish and send waiting invitations</button>}</div>}
+      {batchId && <div className="mt-4 rounded-xl border-2 border-black bg-background p-3"><p className="font-bold">{shares.length} existing recipient{shares.length === 1 ? "" : "s"}</p><p className="my-2 text-sm">{shares.map(share => share.recipientEmail).join(", ")}</p><button type="button" disabled={busy} onClick={() => void reopenLinks()} className="rounded-full border-2 border-black bg-primary text-primary-foreground px-5 py-2.5 font-bold shadow-sm">View secure links</button><p className="mt-2 text-sm">Add recipients below. Existing permission and access times are preserved.</p>{shares.some(share => share.status === "AWAITING_RECIPIENT_KEY") && <button type="button" disabled={busy || !privateKey} onClick={() => void create()} className="mt-3 rounded-full border-2 border-black bg-primary text-primary-foreground px-5 py-2 font-bold disabled:opacity-40">Finish and send waiting invitations</button>}</div>}
       {!privateKey && <p className="mt-3 text-sm">Unlock your keys to add recipients. You can view and share existing links now.</p>}
       <fieldset disabled={busy || loadingLinks || !privateKey}>
       <div className="mt-4 flex flex-wrap gap-2">
         <Input value={entry} onChange={(event) => setEntry(event.target.value)} placeholder="recipient@example.com" className="h-11 min-w-56 flex-1 rounded-xl border-2 border-black" />
-        <button type="button" onClick={() => { addEmails(parseEmailText(entry)); setEntry(""); }} className="rounded-full border-2 border-black bg-primary px-5 font-bold shadow-sm">Add</button>
+        <button type="button" onClick={() => { addEmails(parseEmailText(entry)); setEntry(""); }} className="rounded-full border-2 border-black bg-primary text-primary-foreground px-5 font-bold shadow-sm">Add</button>
         <button type="button" onClick={() => fileRef.current?.click()} className="flex items-center gap-2 rounded-full border-2 border-black bg-background px-4 font-bold shadow-sm"><Upload className="size-4" /> Import</button>
         <input ref={fileRef} type="file" accept=".csv,.txt,.xlsx" className="sr-only" onChange={async (event) => { const file = event.target.files?.[0]; try { if (file) addEmails(await parseRecipientFile(file)); } catch (error) { setMessage(error instanceof Error ? error.message : "Could not read the list."); } event.target.value = ""; }} />
       </div>
       <div className="mt-3 flex flex-wrap gap-2">{emails.map((email) => <span key={email} className="flex items-center gap-2 rounded-full border-2 border-black bg-muted px-3 py-1.5 text-xs font-bold">{email}<button type="button" aria-label={`Remove ${email}`} onClick={() => { setEmails((list) => list.filter((item) => item !== email)); }} className="rounded-full"><Trash2 className="size-3.5" /></button></span>)}</div>
       <div className="mt-4 flex flex-wrap items-center gap-3">
         <span className="rounded-full border-2 border-black bg-background px-4 py-2 text-sm font-bold">{permission === "VIEW_ONLY" ? "View only" : "Existing link permissions retained"}</span>
-        <button type="button" disabled={busy || !emails.length} onClick={() => void create()} className="rounded-full border-2 border-black bg-primary px-5 py-2.5 font-head shadow-sm disabled:opacity-50">Send</button>
+        <button type="button" disabled={busy || !emails.length} onClick={() => void create()} className="rounded-full border-2 border-black bg-primary text-primary-foreground px-5 py-2.5 font-head shadow-sm disabled:opacity-50">Send</button>
       </div>
       {!batchId && <details className="mt-4 rounded-xl border-2 border-black bg-background p-3">
         <summary className="cursor-pointer rounded-full font-bold">Access timing (optional)</summary>

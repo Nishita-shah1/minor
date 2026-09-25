@@ -96,7 +96,7 @@ export function InstallPrompt({ onVisibilityChange }: { onVisibilityChange: (vis
         : "Open your browser menu and choose Install EchoLeaks.";
 
   return (
-    <aside aria-label="Install EchoLeaks" className="absolute bottom-5 left-5 z-30 w-[min(18rem,calc(100vw-2.5rem))] rounded-xl border-2 border-black bg-background p-3 text-black shadow-md sm:bottom-32">
+    <aside aria-label="Install EchoLeaks" className="absolute bottom-5 left-5 z-30 w-[min(18rem,calc(100vw-2.5rem))] rounded-xl border-2 border-black bg-background p-3 text-foreground shadow-md sm:bottom-32">
       <button type="button" onClick={dismiss} aria-label="Dismiss install suggestion" className="absolute right-2 top-2 rounded-full p-1 hover:bg-muted focus-visible:outline-2 focus-visible:outline-offset-2">
         <X className="size-4" aria-hidden />
       </button>

@@ -1,5 +1,6 @@
 "use client";
 
+import { useWorkspaceActive } from "./workspace-activity";
 import { useUser } from "@clerk/nextjs";
 import { FileText, KeyRound, LoaderCircle, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -14,6 +15,7 @@ type NamedFile = { documentId: string; status: "READY" | "DELETED"; metadata: Fi
 
 export function HistoryWorkspace() {
   const { user } = useUser();
+  const active = useWorkspaceActive();
   const vault = useKeyVault(user?.id);
   const [groups, setGroups] = useState<Group[]>([]);
   const [names, setNames] = useState<Record<string, NamedFile[]>>({});
@@ -23,15 +25,23 @@ export function HistoryWorkspace() {
   const [vaultOpen, setVaultOpen] = useState(false);
 
   useEffect(() => {
+    if (!active) return;
     let cancelled = false;
     fetch("/api/upload-groups", { cache: "no-store" }).then(async (response) => {
       const body = await response.json();
       if (!response.ok) throw new Error(body.error?.message ?? "Could not load uploads.");
-      if (!cancelled) setGroups(body.groups);
+      if (!cancelled) {
+        setGroups(body.groups);
+        // Retain decrypted names, but reconcile deleted files against fresh metadata.
+        setNames(current => Object.fromEntries(body.groups.filter((group: Group) => group.status !== "DELETED").filter((group: Group) => current[group.id]).map((group: Group) => [group.id, current[group.id].map(file => {
+          const document = group.documents.find(candidate => candidate.id === file.documentId);
+          return !document || document.status === "DELETED" ? { ...file, status: "DELETED", metadata: null } : file;
+        })])));
+      }
     }).catch((error) => { if (!cancelled) setMessage(error instanceof Error ? error.message : "Could not load uploads."); })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
-  }, []);
+  }, [active]);
 
   const unlockNames = async () => {
     if (vault.state.status !== "READY") { setVaultOpen(true); return; }
@@ -72,8 +82,8 @@ export function HistoryWorkspace() {
     else setMessage("Deletion is incomplete and access remains blocked. Retry.");
   };
 
-  return <section className="min-h-svh px-5 py-6 sm:px-7 lg:px-10"><div className="mx-auto max-w-6xl"><header><p className="text-xs font-bold tracking-[0.2em] text-muted-foreground uppercase">Owner workspace</p><h1 className="mt-1 font-head text-4xl sm:text-5xl">History</h1></header>
-    <div className="mt-5 flex flex-wrap items-center gap-3"><button type="button" onClick={() => void unlockNames()} disabled={loading || !groups.length} className="flex items-center gap-2 rounded-full border-2 border-black bg-primary px-5 py-2.5 font-bold shadow-sm disabled:opacity-50"><KeyRound className="size-4" /> Unlock filenames</button>{loading && <LoaderCircle className="size-5 animate-spin" />}</div>
-    <div className="mt-5 space-y-4">{groups.map((group) => <article key={group.id} className="rounded-2xl border-[3px] border-black bg-card p-4 shadow-md"><div className="flex flex-wrap items-center justify-between gap-3"><div><h2 className="font-head text-xl">Protected group</h2><p className="text-sm text-muted-foreground">{new Date(group.createdAt).toLocaleString()} · {group.status}</p></div>{group.status !== "DELETED" && <button type="button" onClick={() => void deleteGroup(group.id)} className="flex items-center gap-2 rounded-full border-2 border-black bg-destructive px-4 py-2 font-bold"><Trash2 className="size-4" /> Delete group</button>}</div><div className="mt-3 space-y-2">{(names[group.id] ?? group.documents.map((document) => ({ documentId: document.id, status: document.status === "DELETED" ? "DELETED" as const : "READY" as const, metadata: null }))).map((file) => <div key={file.documentId} className="flex items-center gap-3 rounded-xl border-2 border-black bg-background p-3"><FileText className="size-5" /><span className="min-w-0 flex-1 truncate font-bold">{file.status === "DELETED" ? "File removed by owner" : file.metadata?.name ?? "Encrypted filename"}</span>{file.status !== "DELETED" && <button type="button" onClick={() => void deleteFile(group.id, file.documentId, file.metadata?.name ?? "this file")} className="rounded-full border-2 border-black bg-destructive p-2" aria-label="Delete file"><Trash2 className="size-4" /></button>}</div>)}</div>{group.status === "READY" && <><button type="button" onClick={() => setSharingGroup(current => current === group.id ? null : group.id)} className="mt-4 rounded-full border-2 border-black bg-primary px-5 py-2.5 font-bold shadow-sm">Manage secure links</button>{sharingGroup === group.id && <SharePanel key={group.id} groupId={group.id} privateKey={vault.state.status === "READY" ? vault.state.privateKey : undefined} />}</>}</article>)}{!loading && !groups.length && <div className="rounded-2xl border-2 border-black bg-card p-8 text-center shadow-md">No protected uploads yet.</div>}</div>
+  return <section className="min-h-[calc(100svh-4rem)] px-5 pt-2 pb-6 sm:px-7 lg:px-10"><div className="mx-auto max-w-6xl"><header><p className="text-xs font-bold tracking-[0.2em] text-muted-foreground uppercase">Owner workspace</p><h1 className="mt-1 font-head text-4xl sm:text-5xl">History</h1></header>
+    <div className="mt-5 flex flex-wrap items-center gap-3"><button type="button" onClick={() => void unlockNames()} disabled={loading || !groups.length} className="flex items-center gap-2 rounded-full border-2 border-black bg-primary text-primary-foreground px-5 py-2.5 font-bold shadow-sm disabled:opacity-50"><KeyRound className="size-4" /> Unlock filenames</button>{loading && <LoaderCircle className="size-5 animate-spin" />}</div>
+    <div className="mt-5 space-y-4">{groups.map((group) => <article key={group.id} className="rounded-2xl border-[3px] border-black bg-card p-4 shadow-md"><div className="flex flex-wrap items-center justify-between gap-3"><div><h2 className="font-head text-xl">Protected group</h2><p className="text-sm text-muted-foreground">{new Date(group.createdAt).toLocaleString()} · {group.status}</p></div>{group.status !== "DELETED" && <button type="button" onClick={() => void deleteGroup(group.id)} className="flex items-center gap-2 rounded-full border-2 border-black bg-destructive text-destructive-foreground px-4 py-2 font-bold"><Trash2 className="size-4" /> Delete group</button>}</div><div className="mt-3 space-y-2">{(names[group.id] ?? group.documents.map((document) => ({ documentId: document.id, status: document.status === "DELETED" ? "DELETED" as const : "READY" as const, metadata: null }))).map((file) => <div key={file.documentId} className="flex items-center gap-3 rounded-xl border-2 border-black bg-background p-3"><FileText className="size-5" /><span className="min-w-0 flex-1 truncate font-bold">{file.status === "DELETED" ? "File removed by owner" : file.metadata?.name ?? "Encrypted filename"}</span>{file.status !== "DELETED" && <button type="button" onClick={() => void deleteFile(group.id, file.documentId, file.metadata?.name ?? "this file")} className="rounded-full border-2 border-black bg-destructive text-destructive-foreground p-2" aria-label="Delete file"><Trash2 className="size-4" /></button>}</div>)}</div>{group.status === "READY" && <><button type="button" onClick={() => setSharingGroup(current => current === group.id ? null : group.id)} className="mt-4 rounded-full border-2 border-black bg-primary text-primary-foreground px-5 py-2.5 font-bold shadow-sm">Manage secure links</button>{sharingGroup === group.id && <SharePanel key={group.id} groupId={group.id} privateKey={vault.state.status === "READY" ? vault.state.privateKey : undefined} />}</>}</article>)}{!loading && !groups.length && <div className="rounded-2xl border-2 border-black bg-card p-8 text-center shadow-md">No protected uploads yet.</div>}</div>
     <p className="mt-4 text-sm text-muted-foreground" aria-live="polite">{message}</p></div><KeyVaultDialog open={vaultOpen} onOpenChange={setVaultOpen} state={vault.state} onSetup={vault.setup} onUnlock={vault.unlock} /></section>;
 }
