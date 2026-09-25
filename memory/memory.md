@@ -2,12 +2,13 @@
 
 > Keep this file **short**. Append only what changed. See `AGENTS.md` for update rules.
 
-**Updated:** 2026-09-24
+**Updated:** 2026-09-25
 
 ## Stack
 Next.js 16 (App Router) · React 19 · Tailwind v4 · shadcn + Neobrutalism · Clerk · Neon/Drizzle · private Cloudflare R2 · Brevo · Web Crypto/libsodium/IndexedDB/Workers
 
 ## Done
+- **Fingerprint planning:** `docs/superpowers/specs/2026-09-25-webgpu-fingerprinting-design.md` records the screenshot-first protocol and eight gated tickets; written-spec review is pending and no engine is built. `CLAUDE.md` links GitHub tracker, triage-label, and single-context conventions in `docs/agents/`.
 - **UI:** Neobrutalism theme in `app/globals.css` (cream/yellow, thick borders, hard shadows, `0.75rem` root radius). Buttons and navigation controls stay rounded; sidebar toggles use a yellow, hard-shadowed hamburger control. 54 shadcn/ui components in `components/ui/`. Fonts: Archivo Black (head), Space Grotesk (body).
 - **Landing (`/`):** Full-viewport hero — video bg (`public/video/EchoLeaks-Hero-Section-Video.mp4`), tap-to-unmute, hollow **EchoLeaks** title, tagline + **Protect a File** CTA. **Public — no auth required.**
 - **Navbar:** Logo left; right = Sign In + Get Started (signed out) or Clerk `UserButton` (signed in).
