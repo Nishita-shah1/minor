@@ -50,6 +50,13 @@
       "when": 1790400770628,
       "tag": "0006_share_openpgp_envelopes",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1790404729673,
+      "tag": "0007_tranquil_deathbird",
+      "breakpoints": true
     }
   ]
 }

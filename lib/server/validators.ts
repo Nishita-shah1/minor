@@ -75,3 +75,35 @@ export const createShares = z.object({
 export const accessEvent = z.object({
   eventType: z.enum(["DECRYPT_SUCCEEDED", "DECRYPT_FAILED", "DOWNLOAD_REQUESTED"]),
 });
+
+export const createViewingSession = z.object({
+  documentId: documentId,
+  browserFamily: z.enum(["chrome", "firefox", "safari", "edge", "other", "unknown"]),
+  platformCategory: z.enum(["windows", "macos", "linux", "chromeos", "unknown"]),
+  viewportBucket: z.enum(["below_1024", "1024_1439", "1440_plus", "unknown"]),
+  dprBucket: z.enum(["1_or_less", "above_1_to_2", "above_2", "unknown"]),
+  webgpuOutcome: z.enum(["ready", "unavailable", "unknown"]),
+});
+
+export const sessionEventBatch = z.object({
+  events: z.array(z.object({
+    sequence: z.number().int().min(1).max(1_000_000),
+    eventType: z.enum([
+      "HEARTBEAT",
+      "VISIBILITY_HIDDEN",
+      "VISIBILITY_VISIBLE",
+      "FULLSCREEN_ENTER",
+      "FULLSCREEN_EXIT",
+      "PAGE_CHANGED",
+      "SCREENSHOT_ATTEMPTED",
+      "PRINT_ATTEMPTED",
+      "COVERED",
+      "SESSION_CLOSED",
+    ]),
+    marked: z.boolean(),
+    visible: z.boolean(),
+    fullscreen: z.boolean(),
+    authorized: z.boolean(),
+    pageIndex: z.number().int().min(1).max(10_000).nullable().optional(),
+  })).min(1).max(20),
+});
