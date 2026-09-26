@@ -5,6 +5,38 @@ export const MAX_MARKED_SIDE = 4096;
 export const MAX_MARKED_PIXELS = 4_194_304;
 const PLANE = MODEL_SIDE * MODEL_SIDE;
 
+export function frameEvidence(pixels: Pixels): Pixels {
+  const { width, height, data } = pixels;
+  if (!Number.isInteger(width) || !Number.isInteger(height) || width < 32 || height < 32 || data.length !== width * height * 4) {
+    throw new Error("The marked page exceeds the browser's safe working surface.");
+  }
+  const aspect = width / height;
+  if (aspect >= 0.5 && aspect <= 2 && width <= MAX_MARKED_SIDE && height <= MAX_MARKED_SIDE && width * height <= MAX_MARKED_PIXELS) {
+    validatePixels(pixels);
+    return pixels;
+  }
+  let cropWidth = width;
+  let cropHeight = height;
+  let cropX = 0;
+  let cropY = 0;
+  if (aspect > 2) {
+    cropWidth = Math.max(32, Math.floor(height * 2));
+    cropX = Math.max(0, Math.floor((width - cropWidth) / 2));
+  } else if (aspect < 0.5) {
+    cropHeight = Math.max(32, Math.floor(width * 2));
+    cropY = Math.max(0, Math.floor((height - cropHeight) / 2));
+  }
+  cropWidth = Math.min(cropWidth, width);
+  cropHeight = Math.min(cropHeight, height);
+  const framed = new Uint8ClampedArray(cropWidth * cropHeight * 4);
+  for (let y = 0; y < cropHeight; y++) {
+    framed.set(data.subarray(((cropY + y) * width + cropX) * 4, ((cropY + y) * width + cropX + cropWidth) * 4), y * cropWidth * 4);
+  }
+  const result = { width: cropWidth, height: cropHeight, data: framed };
+  validatePixels(result);
+  return result;
+}
+
 export function validatePixels(pixels: Pixels): void {
   const { width, height, data } = pixels;
   if (!Number.isInteger(width) || !Number.isInteger(height) || width < 32 || height < 32 || width > MAX_MARKED_SIDE || height > MAX_MARKED_SIDE || width * height > MAX_MARKED_PIXELS || data.length !== width * height * 4) {

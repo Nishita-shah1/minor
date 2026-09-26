@@ -115,10 +115,13 @@ export async function decryptGrantDownload(grant: OpenPgpGrant, documentId: stri
   if (!entry) throw new Error("This private key does not contain that file.");
   const file = await decryptAes(ciphertext, await grantKey(entry.documentKey), base64urlToBytes(fileIv), fileAad(documentId));
   let fingerprintId: Uint8Array | undefined;
+  let fingerprintSecret: Uint8Array | undefined;
   if (entry.fingerprintSecret) {
     const secret = base64urlToBytes(entry.fingerprintSecret);
-    try { fingerprintId = await deriveIdentifier(documentId, secret); }
-    finally { secret.fill(0); }
+    try {
+      fingerprintId = await deriveIdentifier(documentId, secret);
+      fingerprintSecret = secret.slice();
+    } finally { secret.fill(0); }
   }
-  return { file, fingerprintId };
+  return { file, fingerprintId, fingerprintSecret };
 }

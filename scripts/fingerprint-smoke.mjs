@@ -14,11 +14,13 @@ const output = path.join(root, "test-results/fingerprint-smoke", `strength-${str
 await mkdir(output, { recursive: true });
 await build({ entryPoints: [path.join(root, "workers/fingerprint.worker.ts")], outfile: path.join(output, "worker.js"),
   bundle: true, format: "esm", platform: "browser", target: "es2022", alias: { "@": root } });
+await build({ entryPoints: [path.join(root, "scripts/fingerprint/dense-page.mjs")], outfile: path.join(output, "dense.js"),
+  bundle: true, format: "esm", platform: "browser", target: "es2022", alias: { "@": root } });
 if (process.env.FINGERPRINT_LARGE_IMAGE === "1") {
   await build({ entryPoints: [path.join(root, "lib/fingerprint/lab/render.ts")], outfile: path.join(output, "render.js"),
     bundle: true, format: "esm", platform: "browser", target: "es2022", alias: { "@": root } });
 }
-const html = `<!doctype html><meta charset="utf-8"><title>Public TrustMark smoke fixture</title><canvas id="marked"></canvas><script>
+const html = `<!doctype html><meta charset="utf-8"><title>Public TrustMark smoke fixture</title><canvas id="marked"></canvas><script type="module" src="/dense.js"></script><script>
 const worker = new Worker('/worker.js', {type:'module'});
 const waiting = new Map();
 worker.onmessage = ({data}) => {
@@ -42,6 +44,7 @@ const server = createServer(async (request, response) => {
     if (url.pathname === "/") { response.setHeader("Content-Type", "text/html"); response.end(html); return; }
     let file;
     if (url.pathname === "/worker.js") file = path.join(output, "worker.js");
+    else if (url.pathname === "/dense.js") file = path.join(output, "dense.js");
     else if (url.pathname === "/render.js" && process.env.FINGERPRINT_LARGE_IMAGE === "1") file = path.join(output, "render.js");
     else if (url.pathname.startsWith("/fingerprint-assets/")) {
       file = path.resolve(root, "public", `.${url.pathname}`);
@@ -62,6 +65,7 @@ try {
   browser = await chromium.launch({ channel: "chrome", headless: process.env.FINGERPRINT_HEADED !== "1", args: browserArgs });
   const page = await browser.newPage({ viewport: { width: 1400, height: 1400 } });
   await page.goto(`http://127.0.0.1:${server.address().port}`);
+  await page.waitForFunction(() => window.denseReady === true);
   report.runtime = await page.evaluate(async () => {
     const adapter = await navigator.gpu?.requestAdapter();
     return { browser: navigator.userAgent, adapter: adapter ? { vendor: adapter.info.vendor, architecture: adapter.info.architecture, device: adapter.info.device, description: adapter.info.description } : null,
@@ -89,7 +93,10 @@ try {
     const encodeStart=performance.now();
     await page.evaluate(async (strength) => {
       const source=window.fixture();
-      const result=await window.exchange({operation:'encode',pixels:source,identifier:new Uint8Array([1,35,69,103,137]),strength});
+      const trust=await window.exchange({operation:'encode',pixels:source,identifier:new Uint8Array([1,35,69,103,137]),strength});
+      const secret=new Uint8Array(32); for (let i=0;i<32;i++) secret[i]=i+1;
+      const dense=await window.denseEmbed(trust.value, secret, "11111111-1111-4111-8111-111111111111", 1);
+      const result={value:dense.pixels};
       window.exactMarked=result.value;
       const c=document.querySelector('#marked');c.width=result.value.width;c.height=result.value.height;
       c.getContext('2d').putImageData(new ImageData(result.value.data,c.width,c.height),0,0);
@@ -128,6 +135,38 @@ try {
     return { status:result.value.status, identifier:result.value.identifier?Array.from(result.value.identifier,x=>x.toString(16).padStart(2,'0')).join(''):null };
   });
   report.cases.push({ name: "unmarked", ...negative, correct: negative.status === "NO_RELIABLE_MARK" && negative.identifier === null });
+  const denseCases = await page.evaluate(async () => {
+    const documentId = "11111111-1111-4111-8111-111111111111";
+    const owner = new Uint8Array(32); for (let i = 0; i < 32; i++) owner[i] = i + 1;
+    const candidates = [owner, 9, 4, 15].map((fill, index) => ({
+      id: index === 0 ? "owner" : `other-${fill}`,
+      secret: index === 0 ? owner : new Uint8Array(32).fill(fill),
+      documentId,
+    }));
+    const crop = (pixels, x, y, width, height) => {
+      const data = new Uint8ClampedArray(width * height * 4);
+      for (let row = 0; row < height; row++) data.set(pixels.data.subarray(((y + row) * pixels.width + x) * 4, ((y + row) * pixels.width + x + width) * 4), row * width * 4);
+      return { width, height, data };
+    };
+    const rank = (evidence) => window.denseRank({ evidence, candidates, pages: [1], captureScales: [1] });
+    const summary = (verdict) => ({ status: verdict.status, candidateId: verdict.candidateId ?? null, top: verdict.scores?.[0]?.candidateId ?? null, topScore: verdict.scores?.[0]?.score ?? null, margin: verdict.margin ?? null, regions: verdict.regions ?? 0 });
+    return {
+      crop96: summary(await rank(crop(window.exactMarked, 41, 83, 96, 96))),
+      crop64: summary(await rank(crop(window.exactMarked, 120, 240, 64, 64))),
+      crop32: summary(await rank(crop(window.exactMarked, 200, 400, 32, 32))),
+      unmarked: summary(await rank(crop(window.fixture(), 41, 83, 96, 96))),
+    };
+  });
+  const denseExpectations = {
+    crop96: (value) => value.top === "owner" && value.candidateId !== "other-9" && (value.status !== "PROBABLE_MATCH" || value.candidateId === "owner"),
+    crop64: (value) => value.status !== "PROBABLE_MATCH" || value.candidateId === "owner",
+    crop32: (value) => value.status !== "PROBABLE_MATCH",
+    unmarked: (value) => value.status !== "PROBABLE_MATCH" && value.candidateId == null,
+  };
+  for (const [name, value] of Object.entries(denseCases)) {
+    report.cases.push({ name: `dense-${name}`, ...value, correct: denseExpectations[name](value) });
+    console.log(`dense-${name}`, JSON.stringify(value));
+  }
   if (process.env.FINGERPRINT_LARGE_IMAGE === "1") {
     for (const [width, height] of [[6000, 4000], [12000, 2000]]) {
       const result = await page.evaluate(async ({ width, height, strength }) => {

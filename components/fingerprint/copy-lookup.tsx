@@ -3,10 +3,11 @@ import { useWorkspaceActive } from "@/components/dashboard/workspace-activity";
 import { useUser } from "@clerk/nextjs";
 import { useEffect, useRef, useState } from "react";
 import { useKeyVault } from "@/hooks/use-key-vault";
-import { unwrapCopyIdentifier, EXPERIMENTAL_PROFILE } from "@/lib/fingerprint/copy-secret";
+import { unwrapCopyMaterial } from "@/lib/fingerprint/copy-secret";
+import { parseIssuedProfile } from "@/lib/fingerprint/profile";
 
-export type LocalCandidate = { id: string; documentId: string; shareId: string; identifier: Uint8Array; recipientEmail: string; recipientName?: string | null };
-type EncryptedCandidate = Omit<LocalCandidate, "identifier"> & { ownerWrappedKey: string; profileId: string };
+export type LocalCandidate = { id: string; documentId: string; shareId: string; identifier: Uint8Array; secret: Uint8Array | null; recipientEmail: string; recipientName?: string | null };
+type EncryptedCandidate = Omit<LocalCandidate, "identifier" | "secret"> & { ownerWrappedKey: string; profileId: string };
 export function CopyLookup({ onChange, busy = false }: { busy?: boolean; onChange: (candidates: LocalCandidate[], ready: boolean) => void }) {
   const { user } = useUser();
   const active = useWorkspaceActive();
@@ -42,11 +43,13 @@ export function CopyLookup({ onChange, busy = false }: { busy?: boolean; onChang
           if (!response.ok) throw new Error(body.error?.message ?? "Recipient records unavailable.");
           for (const candidate of body.candidates) {
             if (controller.signal.aborted) return;
-            if (candidate.profileId !== EXPERIMENTAL_PROFILE) throw new Error("An issued profile is unavailable. Recipient lookup could not be completed.");
-            const identifier = await unwrapCopyIdentifier(candidate.documentId, candidate.ownerWrappedKey, vault.state.privateKey);
-            if (controller.signal.aborted) { identifier.fill(0); return; }
+            const profile = parseIssuedProfile(candidate.profileId);
+            if (!profile) throw new Error("An issued profile is unavailable. Recipient lookup could not be completed.");
+            const material = await unwrapCopyMaterial(candidate.documentId, candidate.ownerWrappedKey, vault.state.privateKey);
+            if (controller.signal.aborted) { material.identifier.fill(0); material.secret.fill(0); return; }
+            if (!profile.denseProfile) material.secret.fill(0);
             candidates.push({ id: candidate.id, documentId: candidate.documentId, shareId: candidate.shareId,
-              recipientName: candidate.recipientName, recipientEmail: candidate.recipientEmail, identifier });
+              recipientName: candidate.recipientName, recipientEmail: candidate.recipientEmail, identifier: material.identifier, secret: profile.denseProfile ? material.secret : null });
           }
           cursor = body.nextCursor;
         } while (cursor);
@@ -55,13 +58,13 @@ export function CopyLookup({ onChange, busy = false }: { busy?: boolean; onChang
         setMessage(candidates.length ? "" : "No fingerprinted shares found. Test images can be decoded, but cannot identify a recipient.");
       } catch (error) {
         if (controller.signal.aborted) return;
-        candidates.forEach(candidate => candidate.identifier.fill(0));
+        candidates.forEach(candidate => { candidate.identifier.fill(0); candidate.secret?.fill(0); });
         setFailed(true);
         setMessage(error instanceof Error ? error.message : "Recipient lookup failed. Try again.");
       }
     }
     void load();
-    return () => { controller.abort(); candidates.forEach(candidate => candidate.identifier.fill(0)); };
+    return () => { controller.abort(); candidates.forEach(candidate => { candidate.identifier.fill(0); candidate.secret?.fill(0); }); };
   }, [user?.id, vault.state, retry, onChange]);
   return <>
     {message && <div className="space-y-3 rounded-xl border-2 border-black bg-card p-4">

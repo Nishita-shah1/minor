@@ -1,6 +1,7 @@
 import { base64urlToBytes, bytesToBase64url } from "@/lib/crypto/base64url";
 import { decryptAes, encryptAes, importPublicKey, randomBytes, unwrapDocumentKey, wrapDocumentKey } from "@/lib/crypto/core";
-import { EXPERIMENTAL_PROFILE, unwrapCopyIdentifier } from "@/lib/fingerprint/copy-secret";
+import { unwrapCopyIdentifier } from "@/lib/fingerprint/copy-secret";
+import { ISSUED_PROFILE } from "@/lib/fingerprint/profile";
 import { deriveIdentifier, identifierHex } from "@/lib/fingerprint/identity";
 import { invitationProof } from "@/lib/shares/invitation-proof";
 
@@ -44,7 +45,7 @@ export async function prepareInvitation(input: {
     const fingerprintKey = await secretKey(fingerprintSecret);
     fingerprints.push({ documentId: document.documentId,
       ownerWrappedKey: bytesToBase64url(new Uint8Array(await wrapDocumentKey(fingerprintKey, ownerPublic))),
-      profileId: EXPERIMENTAL_PROFILE });
+      profileId: ISSUED_PROFILE });
     grant.documents.push({ documentId: document.documentId, documentKey: bytesToBase64url(rawDocument), fingerprintSecret: bytesToBase64url(fingerprintSecret) });
     rawDocument.fill(0); fingerprintSecret.fill(0);
   }
