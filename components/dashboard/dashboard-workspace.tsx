@@ -13,7 +13,6 @@ import {
   Activity,
 } from "lucide-react";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { KeyVaultDialog } from "@/components/crypto/key-vault-dialog";
 import { useKeyVault } from "@/hooks/use-key-vault";
 import type { FileMetadata } from "@/lib/crypto/types";
 import { decryptMetadata } from "@/lib/crypto/worker-client";
@@ -125,7 +124,6 @@ export function DashboardWorkspace() {
   const [names, setNames] = useState<Record<string, FileMetadata | null>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [vaultOpen, setVaultOpen] = useState(false);
   const [menu, setMenu] = useState<string | null>(null);
 
   useEffect(() => {
@@ -232,7 +230,7 @@ export function DashboardWorkspace() {
                 {vault.state.status !== "READY" && (
                   <button
                     type="button"
-                    onClick={() => setVaultOpen(true)}
+                    onClick={() => setError("File names stay encrypted until this browser has the device key.")}
                     className="rounded-full border border-black/10 bg-card px-3 py-2 text-xs font-bold"
                   >
                     Unlock names
@@ -396,7 +394,6 @@ export function DashboardWorkspace() {
         </aside>
           </div>
       </div>
-      <KeyVaultDialog open={vaultOpen} onOpenChange={setVaultOpen} state={vault.state} onSetup={vault.setup} onUnlock={vault.unlock} />
     </section>
   );
 }
