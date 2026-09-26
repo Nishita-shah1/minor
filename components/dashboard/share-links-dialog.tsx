@@ -7,7 +7,7 @@ import { Check, Clipboard, LoaderCircle, Mail } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 
 export type CreatedShare = { shareId: string; recipientEmail: string; status: string; emailStatus: string; emailAttemptId?: string | null; shareUrl: string | null;
-  shareBaseUrl: string; ownerWrappedInviteSecret?: string | null };
+  shareBaseUrl: string; cameraRequired: boolean; ownerWrappedInviteSecret?: string | null };
 
 export function ShareLinksDialog({
   open, onOpenChange, shares, busy, message, schedule, openPgpEmails, openPgpKnown, onSendEmail, onResend,
@@ -38,7 +38,7 @@ export function ShareLinksDialog({
         <div className="space-y-2">
           {ready.map((share) => (
             <div key={share.shareId} className="flex items-center justify-between gap-3 rounded-xl border-2 border-black bg-background p-3">
-              <div className="min-w-0 flex-1"><p className="truncate font-bold">{share.recipientEmail}</p><p className="text-xs">{share.emailStatus === "ACCEPTED" ? "Accepted by Brevo; delivery not confirmed" : share.emailStatus === "SENDING" ? "Email attempt in progress" : share.emailStatus === "FAILED" ? "Acceptance unconfirmed — retry available" : "Invitation ready to send"}</p>{openPgpKnown && <p className="text-xs">{openPgpEmails.includes(share.recipientEmail.trim().toLowerCase()) ? "Public key saved. After they sign in, this page asks for their private key." : "No public key uploaded. They use the existing secure-access setup."}</p>}<input aria-label={`Secure link for ${share.recipientEmail}`} readOnly value={share.shareUrl ?? ""} className="mt-2 w-full rounded-lg border-2 border-black p-2 text-xs" onFocus={event => event.target.select()} /></div>
+              <div className="min-w-0 flex-1"><p className="truncate font-bold">{share.recipientEmail}</p><p className="text-xs font-bold">{share.cameraRequired ? "High-Security Camera View required" : "Webcam off"}</p><p className="text-xs">{share.emailStatus === "ACCEPTED" ? "Accepted by Brevo; delivery not confirmed" : share.emailStatus === "SENDING" ? "Email attempt in progress" : share.emailStatus === "FAILED" ? "Acceptance unconfirmed — retry available" : "Invitation ready to send"}</p>{openPgpKnown && <p className="text-xs">{openPgpEmails.includes(share.recipientEmail.trim().toLowerCase()) ? "Public key saved. After they sign in, this page asks for their private key." : "No public key uploaded. They use the existing secure-access setup."}</p>}<input aria-label={`Secure link for ${share.recipientEmail}`} readOnly value={share.shareUrl ?? ""} className="mt-2 w-full rounded-lg border-2 border-black p-2 text-xs" onFocus={event => event.target.select()} /></div>
               <button type="button" onClick={async () => { try { await navigator.clipboard.writeText(share.shareUrl!); setCopied(share.shareId); setCopyError(""); } catch { setCopyError("Clipboard access failed. Select and copy the link below."); } }} className="flex shrink-0 items-center gap-1.5 rounded-full border-2 border-black bg-primary text-primary-foreground px-3 py-1.5 font-bold shadow-sm">
                 <Clipboard className="size-4" /> {copied === share.shareId ? "Copied" : "Copy link"}
               </button>

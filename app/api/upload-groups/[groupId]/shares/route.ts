@@ -66,6 +66,7 @@ export async function POST(request: Request, context: RouteContext<"/api/upload-
       id: crypto.randomUUID(), email: normalizeEmail(recipient.email),
       userId: recipient.status === "READY" ? recipient.clerkUserId : null,
       status: recipient.status === "READY" ? "ACTIVE" : "AWAITING_RECIPIENT_KEY",
+      cameraRequired: recipient.cameraRequired,
       keyVersion: recipient.status === "READY" ? recipient.keyVersion : null,
       envelopes: recipient.status === "READY" ? recipient.envelopes : [],
     }));
@@ -96,7 +97,7 @@ async function loadLinks(groupId: string) {
   const appUrl = getAppEnv().APP_URL.replace(/\/$/, "");
   return { batchId: batch.id, emailAttemptId: batch.emailStatus === "SENDING" || batch.emailStatus === "FAILED" ? batch.emailAttemptId : null, permission: batch.permission, availableFrom: batch.availableFrom, expiresAt: batch.expiresAt,
     shares: rows.map(({share, ownerWrappedInviteSecret}) => ({ shareId: share.id, recipientEmail: share.recipientEmailNormalized,
-      status: share.status, emailStatus: share.emailStatus, emailAttemptId: share.emailAttemptId,
+      status: share.status, cameraRequired: share.cameraRequired, emailStatus: share.emailStatus, emailAttemptId: share.emailAttemptId,
       ownerWrappedInviteSecret: share.status === "AWAITING_RECIPIENT_KEY" ? ownerWrappedInviteSecret : null,
       shareBaseUrl: `${appUrl}/share/${share.id}`,
       shareUrl: share.status === "ACTIVE" ? `${appUrl}/share/${share.id}` : null })) };

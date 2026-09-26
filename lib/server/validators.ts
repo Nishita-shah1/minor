@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { MAX_GROUP_FILES, MAX_RECIPIENTS } from "@/lib/crypto/constants";
+import { cameraEventTypes } from "@/lib/camera/events";
 
 export const base64url = z.string().min(1).max(100_000).regex(/^[A-Za-z0-9_-]+$/);
 export const documentId = z.uuid();
@@ -56,6 +57,7 @@ export const createShares = z.object({
     z.object({
       status: z.literal("READY"),
       email,
+      cameraRequired: z.boolean().default(false),
       clerkUserId: z.string().min(1).max(200),
       keyVersion: z.number().int().positive(),
       publicKeyFingerprint: z.string().length(64),
@@ -65,15 +67,20 @@ export const createShares = z.object({
         fingerprint: z.object({ ownerWrappedKey: base64url.max(1000), recipientWrappedKey: base64url.max(1000), profileId: z.enum(["trustmark-q-lab-v2", "trustmark-q-lab-v2+densecrop-v1"]) }).optional(),
       })).min(1).max(MAX_GROUP_FILES),
     }),
-    z.object({ status: z.literal("NOT_ENROLLED"), email }),
+    z.object({ status: z.literal("NOT_ENROLLED"), email, cameraRequired: z.boolean().default(false) }),
   ])).min(1).max(MAX_RECIPIENTS),
   permission,
   availableFrom: z.iso.datetime().nullable().optional(),
   expiresAt: z.iso.datetime().nullable().optional(),
 });
 
-export const accessEvent = z.object({
-  eventType: z.enum(["DECRYPT_SUCCEEDED", "DECRYPT_FAILED", "DOWNLOAD_REQUESTED"]),
+export const accessEvent = z.strictObject({
+  eventType: z.enum(["DECRYPT_SUCCEEDED", "DECRYPT_FAILED", "DOWNLOAD_REQUESTED", ...cameraEventTypes]),
+  sessionId: z.uuid().optional(),
+  durationMs: z.number().int().min(0).max(86_400_000).optional(),
+}).superRefine((event, context) => {
+  if (cameraEventTypes.some(type => type === event.eventType) && !event.sessionId)
+    context.addIssue({ code: "custom", message: "Camera events require a session ID." });
 });
 
 export const createViewingSession = z.object({

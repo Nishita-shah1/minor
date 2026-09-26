@@ -1,5 +1,6 @@
 import {
   bigint,
+  boolean,
   index,
   integer,
   jsonb,
@@ -167,6 +168,7 @@ export const shares = pgTable(
     recipientName: text("recipient_name"),
     recipientEmailNormalized: text("recipient_email_normalized").notNull(),
     permission: permission("permission").notNull(),
+    cameraRequired: boolean("camera_required").notNull().default(false),
     status: shareStatus("status").notNull(),
     providerMessageId: text("provider_message_id"),
     emailStatus: emailStatus("email_status").notNull().default("NOT_REQUESTED"),
@@ -199,9 +201,11 @@ export const accessEvents = pgTable(
       .references(() => shares.id, { onDelete: "cascade" }),
     clerkUserId: text("clerk_user_id").notNull(),
     eventType: text("event_type").notNull(),
+    sessionId: uuid("session_id"),
+    durationMs: integer("duration_ms"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (table) => [index("access_events_share_idx").on(table.shareId)],
+  (table) => [index("access_events_share_idx").on(table.shareId), index("access_events_type_created_idx").on(table.eventType, table.createdAt)],
 );
 
 export const viewingSessionStatus = pgEnum("viewing_session_status", [

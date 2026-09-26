@@ -43,6 +43,7 @@ next-env.d.ts
 
 # Reproducible, checksum-verified experimental model/runtime assets
 /public/fingerprint-assets/
+/public/camera-assets/runtime/
 /test-results/
 /playwright-report/
 

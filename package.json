@@ -3,7 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
+    "predev": "node scripts/prepare-camera-assets.mjs",
     "dev": "next dev",
+    "prebuild": "node scripts/prepare-camera-assets.mjs",
     "build": "next build --webpack",
     "start": "next start",
     "lint": "eslint",
@@ -11,6 +13,7 @@
     "test:watch": "vitest",
     "test:e2e": "playwright test",
     "test:workspace-state": "node scripts/workspace-state-ui.mjs",
+    "test:camera-ui": "node scripts/camera-security-ui.mjs",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
     "db:check": "drizzle-kit check",

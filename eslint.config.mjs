@@ -13,6 +13,7 @@ const eslintConfig = defineConfig([
     "build/**",
     "next-env.d.ts",
     "public/fingerprint-assets/**",
+    "public/camera-assets/runtime/**",
     "test-results/**",
     ".fingerprint-results/**",
     "playwright-report/**",

@@ -15,7 +15,7 @@ async function main() {
     return r.stdout.trim();
   };
   const query = (text: string) => command(["exec", "-i", container, "psql", "-U", "postgres", "-At", "-v", "ON_ERROR_STOP=1"], text);
-  const recipient = (email: string, userId = email) => ({ recipientName: "Fixture Recipient", id: randomUUID(), email, userId, status: "ACTIVE", keyVersion: 1, envelopes: [{ documentId: document, wrappedFileKey: "public-test-wrapper", fingerprint: {ownerWrappedKey:"owner-test-wrapper",recipientWrappedKey:"recipient-test-wrapper",profileId:"trustmark-q-lab-v2"} }] });
+  const recipient = (email: string, userId = email, cameraRequired = false) => ({ recipientName: "Fixture Recipient", id: randomUUID(), email, userId, status: "ACTIVE", cameraRequired, keyVersion: 1, envelopes: [{ documentId: document, wrappedFileKey: "public-test-wrapper", fingerprint: {ownerWrappedKey:"owner-test-wrapper",recipientWrappedKey:"recipient-test-wrapper",profileId:"trustmark-q-lab-v2"} }] });
   const append = (rows: ReturnType<typeof recipient>[], owner = "owner") => {
     const q = new PgDialect().sqlToQuery(appendRecipientsSql(group, owner, rows, true));
     return q.sql.replace(/\$(\d+)/g, (_, n) => `'${String(q.params[Number(n) - 1]).replaceAll("'", "''")}'`);
@@ -32,17 +32,33 @@ async function main() {
     query(`INSERT INTO upload_groups(id,owner_clerk_user_id,status,expected_file_count) VALUES('${group}','owner','READY',1);
       INSERT INTO documents(id,group_id,owner_clerk_user_id,status) VALUES('${document}','${group}','owner','READY');
       INSERT INTO share_batches(id,group_id,sender_clerk_user_id,permission) VALUES('${batch}','${group}','owner','VIEW_ONLY');`);
-    const alice = recipient("alice@example.test");
+    const alice = recipient("alice@example.test", undefined, true);
     query(transaction(append([alice])));
     assert.equal(query(`SELECT recipient_name FROM shares WHERE id='${alice.id}'`), "Fixture Recipient");
+    assert.equal(query(`SELECT camera_required FROM shares WHERE id='${alice.id}'`), "t");
     query(`DELETE FROM copy_fingerprints WHERE share_id='${alice.id}'`);
     query(transaction(append([recipient(alice.email)])));
+    assert.equal(query(`SELECT camera_required FROM shares WHERE id='${alice.id}'`), "t");
     assert.equal(query("SELECT count(*) FROM copy_fingerprints"), "1");
     assert.equal(query("SELECT count(*) FROM shares"), "1");
     assert.equal(query("SELECT id FROM shares"), alice.id);
     query(transaction(append([recipient("bob@example.test")])));
+    assert.equal(query("SELECT camera_required FROM shares WHERE recipient_email_normalized='bob@example.test'"), "f");
     assert.equal(query("SELECT count(*) FROM shares"), "2");
     assert.equal(query("SELECT count(*) FROM document_key_envelopes"), "2");
+    const legacy = randomUUID();
+    query(`INSERT INTO shares(id,batch_id,group_id,sender_clerk_user_id,recipient_email_normalized,permission,status)
+      VALUES ('${legacy}','${batch}','${group}','owner','legacy@example.test','VIEW_ONLY','ACTIVE');`);
+    assert.equal(query(`SELECT camera_required FROM shares WHERE id='${legacy}'`), "f");
+    query(`DELETE FROM shares WHERE id='${legacy}'`);
+    const sessionId = randomUUID();
+    query(`INSERT INTO access_events(share_id,clerk_user_id,event_type,session_id,created_at) VALUES
+      ('${alice.id}','alice@example.test','FACE_VERIFIED','${sessionId}',now() - interval '31 days'),
+      ('${alice.id}','alice@example.test','FACE_VERIFIED','${sessionId}',now()),
+      ('${alice.id}','alice@example.test','DECRYPT_SUCCEEDED',NULL,now() - interval '31 days');`);
+    query("DELETE FROM access_events WHERE created_at < now() - interval '30 days' AND event_type IN ('FACE_VERIFIED','FACE_MISSING','MULTIPLE_FACES','CAMERA_OBSCURED','CAMERA_STALLED','CAMERA_LOST','CAMERA_RESTORED','VIEWER_BLURRED','VIEWER_LOCKED','VIEWER_UNLOCKED')");
+    assert.equal(query("SELECT count(*) FROM access_events WHERE event_type='FACE_VERIFIED'"), "1");
+    assert.equal(query("SELECT count(*) FROM access_events WHERE event_type='DECRYPT_SUCCEEDED'"), "1");
     query(transaction(append([recipient("alias@example.test", alice.userId)])));
     assert.equal(query("SELECT count(*) FROM shares"), "2");
     query(`UPDATE shares SET status='REVOKED' WHERE id='${alice.id}'`);
@@ -70,7 +86,7 @@ async function main() {
     query("UPDATE upload_groups SET status='DELETING'");
     query(transaction(append([recipient("deleted@example.test")])));
     assert.equal(query("SELECT count(*) FROM shares"), "100");
-    console.log("PASS: append, stable retry, account deduplication, revocation preservation, owner isolation, email exclusion, concurrent 100-recipient cap, envelopes, one batch, deletion blocking.");
+    console.log("PASS: migrations, camera defaults and immutable per-link flag, 30-day camera deletion, append, stable retry, account deduplication, revocation preservation, owner isolation, email exclusion, concurrent 100-recipient cap, envelopes, one batch, deletion blocking.");
   } finally { spawnSync("docker", ["rm", "-f", container]); }
 }
 main().catch(error => { console.error(error); process.exitCode = 1; });

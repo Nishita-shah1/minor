@@ -9,6 +9,8 @@ import { PixelPreview } from "@/components/fingerprint/pixel-preview";
 import { useViewingSession } from "@/hooks/use-viewing-session";
 import type { Pixels } from "@/lib/fingerprint/types";
 import type { FileMetadata } from "@/lib/crypto/types";
+import type { CameraSecurityStatus } from "@/lib/camera/security-machine";
+import { CameraPreview } from "@/components/share/camera-preview";
 
 type Props = {
   shareId: string;
@@ -18,6 +20,9 @@ type Props = {
   permission: "VIEW_ONLY" | "VIEW_AND_DOWNLOAD";
   metadata: FileMetadata;
   bytes: ArrayBuffer;
+  cameraRequired?: boolean;
+  cameraStatus?: CameraSecurityStatus;
+  cameraStream?: MediaStream | null;
 };
 
 export function SecureViewer({
@@ -27,6 +32,9 @@ export function SecureViewer({
   fingerprintSecret,
   metadata,
   bytes,
+  cameraRequired = false,
+  cameraStatus = "verified",
+  cameraStream = null,
 }: Props) {
   if (!fingerprintId) {
     return (
@@ -51,6 +59,9 @@ export function SecureViewer({
         fingerprintSecret={fingerprintSecret}
         shareId={shareId}
         documentId={documentId}
+        cameraRequired={cameraRequired}
+        cameraStatus={cameraStatus}
+        cameraStream={cameraStream}
       />
     </section>
   );
@@ -63,7 +74,10 @@ function DocumentPages({
   fingerprintSecret,
   shareId,
   documentId,
-}: Pick<Props, "bytes" | "metadata" | "fingerprintId" | "fingerprintSecret" | "shareId" | "documentId">) {
+  cameraRequired,
+  cameraStatus,
+  cameraStream,
+}: Pick<Props, "bytes" | "metadata" | "fingerprintId" | "fingerprintSecret" | "shareId" | "documentId" | "cameraRequired" | "cameraStatus" | "cameraStream">) {
   const root = useRef<HTMLDivElement>(null);
   const [runtime, setRuntime] = useState("");
   const [webgpuOutcome, setWebgpuOutcome] = useState<"ready" | "unavailable" | "unknown">("unknown");
@@ -287,7 +301,9 @@ function DocumentPages({
     );
   }
 
-  const covered = !!fingerprintId && (!authorized || !full || !visible);
+  const covered =
+    (!!fingerprintId && (!authorized || !full || !visible))
+    || (cameraRequired && cameraStatus !== "verified");
   const button = "rounded-full border-2 border-black bg-primary text-primary-foreground px-4 py-2 font-bold disabled:opacity-40";
   function navigate(next: number) {
     setPixels(null);
@@ -301,7 +317,10 @@ function DocumentPages({
     : `Experimental TrustMark fingerprint · marked on this device (${runtime || "preparing"}). This copy has no DenseCrop version.`;
 
   return (
-    <div ref={root} className="space-y-4 overflow-auto rounded-xl bg-background p-3">
+    <div ref={root} className="relative space-y-4 overflow-auto rounded-xl bg-background p-3">
+      {cameraRequired && (
+        <CameraPreview stream={cameraStream} status={cameraStatus} className="sticky top-3 z-20 ml-auto mb-3" />
+      )}
       <div className="flex flex-wrap items-center justify-center gap-3 print:hidden">
         <button className={button} disabled={busy || page <= 1} onClick={() => navigate(page - 1)}>Previous page</button>
         <span className="font-bold">Page {page} of {count}</span>
@@ -327,8 +346,10 @@ function DocumentPages({
         ) : busy || !pixels ? (
           <p role="status" className="p-10 text-center">Preparing page locally…</p>
         ) : covered ? (
-          <p className="p-10 text-center">
-            Document covered. Open protected view and wait for access confirmation. Check your connection if this persists.
+          <p className="rounded-xl border-2 border-black bg-card p-10 text-center">
+            {cameraRequired && cameraStatus !== "verified"
+              ? "Camera check paused this view. Return to files to restart or wait for one-face verification."
+              : "Document covered. Open protected view and wait for access confirmation. Check your connection if this persists."}
           </p>
         ) : (
           <div
