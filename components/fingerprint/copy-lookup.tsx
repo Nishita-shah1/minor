@@ -2,7 +2,6 @@
 import { useWorkspaceActive } from "@/components/dashboard/workspace-activity";
 import { useUser } from "@clerk/nextjs";
 import { useEffect, useRef, useState } from "react";
-import { KeyVaultDialog } from "@/components/crypto/key-vault-dialog";
 import { useKeyVault } from "@/hooks/use-key-vault";
 import { unwrapCopyIdentifier, EXPERIMENTAL_PROFILE } from "@/lib/fingerprint/copy-secret";
 
@@ -14,7 +13,6 @@ export function CopyLookup({ onChange, busy = false }: { busy?: boolean; onChang
   const wasActive = useRef(active);
   const vault = useKeyVault(user?.id);
   const [message, setMessage] = useState("Preparing recipient lookup…");
-  const [open, setOpen] = useState(false);
   const [retry, setRetry] = useState(0);
   const [failed, setFailed] = useState(false);
   useEffect(() => {
@@ -32,7 +30,7 @@ export function CopyLookup({ onChange, busy = false }: { busy?: boolean; onChang
     async function load() {
       setFailed(false);
       if (vault.state.status !== "READY") {
-        setMessage(vault.state.status === "ERROR" ? vault.state.message : vault.state.status === "CHECKING" ? "Preparing recipient lookup…" : "Unlock your owner keys once to identify recipient copies locally.");
+        setMessage(vault.state.status === "ERROR" ? vault.state.message : vault.state.status === "CHECKING" || vault.state.status === "NEEDS_SETUP" ? "Preparing recipient lookup…" : "This browser does not have the device key for recipient lookup.");
         return;
       }
       setMessage("Loading recipient copies…");
@@ -68,9 +66,7 @@ export function CopyLookup({ onChange, busy = false }: { busy?: boolean; onChang
   return <>
     {message && <div className="space-y-3 rounded-xl border-2 border-black bg-card p-4">
     <p role="status" className="text-sm">{message}</p>
-    {(vault.state.status === "NEEDS_UNLOCK" || vault.state.status === "NEEDS_SETUP") && <button onClick={() => setOpen(true)} className="rounded-full border-2 border-black bg-primary text-primary-foreground px-4 py-2 font-bold">Unlock owner keys</button>}
     {(failed || vault.state.status === "ERROR") && <button onClick={() => { if (vault.state.status === "ERROR") void vault.refresh(); else setRetry(value => value + 1); }} className="rounded-full border-2 border-black bg-primary text-primary-foreground px-4 py-2 font-bold">Retry recipient lookup</button>}
     </div>}
-    <KeyVaultDialog open={open} onOpenChange={setOpen} state={vault.state} onSetup={vault.setup} onUnlock={vault.unlock} />
   </>;
 }

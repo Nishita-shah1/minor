@@ -36,6 +36,20 @@
       "when": 1790339930307,
       "tag": "0004_sweet_harpoon",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1790399802026,
+      "tag": "0005_user_openpgp_keys",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1790400770628,
+      "tag": "0006_share_openpgp_envelopes",
+      "breakpoints": true
     }
   ]
 }

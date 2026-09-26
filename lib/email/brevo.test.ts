@@ -53,4 +53,16 @@ describe("Brevo batch delivery", () => {
     expect(message).toContain(`#invite=${code}`);
     expect(message).toContain(`paste this code on the share page: <strong>${code}</strong>`);
   });
+
+  it("sends an armored OpenPGP message without the share link", async () => {
+    const request = vi.fn().mockResolvedValue(new Response(JSON.stringify({ messageIds: ["message-1"] }), { status: 201 }));
+    vi.stubGlobal("fetch", request);
+    const armor = "-----BEGIN PGP MESSAGE-----\n\nabc\n-----END PGP MESSAGE-----";
+    await sendShareEmailBatch([{ recipientEmail: "alice@example.com", encryptedMessage: armor, expiresAt: null }], "attempt-id", null);
+    const [, init] = request.mock.calls[0] as [string, RequestInit];
+    const message = JSON.parse(String(init.body)).messageVersions[0].htmlContent as string;
+    expect(message).toContain("BEGIN PGP MESSAGE");
+    expect(message).toContain("OpenPGP public key");
+    expect(message).not.toContain("/share/");
+  });
 });

@@ -62,6 +62,13 @@ export const userKeyBundles = pgTable("user_key_bundles", {
   ...timestamps,
 });
 
+export const userOpenpgpKeys = pgTable("user_openpgp_keys", {
+  clerkUserId: text("clerk_user_id").primaryKey(),
+  armoredPublicKey: text("armored_public_key").notNull(),
+  fingerprint: text("fingerprint").notNull(),
+  ...timestamps,
+});
+
 export const uploadGroups = pgTable(
   "upload_groups",
   {
@@ -174,6 +181,14 @@ export const shares = pgTable(
     index("shares_status_idx").on(table.status),
   ],
 );
+
+export const shareOpenpgpEnvelopes = pgTable("share_openpgp_envelopes", {
+  shareId: uuid("share_id").primaryKey().references(() => shares.id, { onDelete: "cascade" }),
+  fingerprint: text("fingerprint").notNull(),
+  armoredPublicKey: text("armored_public_key").notNull(),
+  armoredMessage: text("armored_message").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
 
 export const accessEvents = pgTable(
   "access_events",

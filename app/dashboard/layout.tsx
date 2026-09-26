@@ -6,6 +6,7 @@ import { ComingSoonPage } from "@/components/dashboard/coming-soon-page";
 import { UploadWorkspace } from "@/components/dashboard/upload-workspace";
 import { ScanWorkspace } from "@/components/fingerprint/scan-workspace";
 import { HistoryWorkspace } from "@/components/dashboard/history-workspace";
+import { OpenPgpKeyCard } from "@/components/crypto/openpgp-key-card";
 import { UserProfile } from "@clerk/nextjs";
 import { AppSidebar } from "@/components/dashboard/app-sidebar";
 import {
@@ -37,6 +38,7 @@ export default async function DashboardLayout({ children }: { children: ReactNod
           scan: <ScanWorkspace />,
           history: <HistoryWorkspace />,
           profile: <section className="min-h-[calc(100svh-4rem)] w-full overflow-x-auto px-4 pt-2 pb-4 sm:px-6 sm:pb-6 lg:px-8 lg:pb-8">
+            <OpenPgpKeyCard />
             <UserProfile routing="path" path="/dashboard/profile" appearance={{
               variables: { borderRadius: "0.75rem" },
               elements: { rootBox: "w-full max-w-none", cardBox: "w-full max-w-none shadow-none", card: "w-full max-w-none shadow-none" },

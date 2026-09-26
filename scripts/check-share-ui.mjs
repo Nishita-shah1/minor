@@ -24,6 +24,8 @@ const server=createServer(async(req,res)=>{
   res.setHeader("Content-Type","application/json");
   if(url.pathname.endsWith("/owner-access"))return res.end(JSON.stringify({fingerprintOwnerPublicKey:{},existingFingerprints:[],files:[{documentId:"33333333-3333-4333-8333-333333333333",status:"READY",wrappedFileKey:"test"}]}));
   if(url.pathname.endsWith("/prepare"))return res.end(JSON.stringify({recipients:body.recipientEmails.map(email=>email.startsWith("bob")?{email,status:"NOT_ENROLLED"}:{email,status:"READY",clerkUserId:email,keyVersion:1,publicKeyFingerprint:"a".repeat(64),publicKeyJwk:{}})}));
+  if(url.pathname==="/api/openpgp-keys/lookup")return res.end(JSON.stringify({keys:[]}));
+  if(url.pathname==="/api/openpgp-keys")return res.end(JSON.stringify({key:null}));
   if(url.pathname.endsWith("/shares")){
    if(req.method==="POST"){
     state.batchId="22222222-2222-4222-8222-222222222222";
@@ -33,6 +35,7 @@ const server=createServer(async(req,res)=>{
   }
   if(url.pathname.endsWith("/invitation")){const id=url.pathname.split("/")[3];state.shares.find(s=>s.shareId===id).ownerWrappedInviteSecret="owner-secret";return res.end('{"ready":true}');}
   if(url.pathname.endsWith("/email")){emails.push(body);const id=url.pathname.split("/")[3];state.shares.find(s=>s.shareId===id).emailStatus="ACCEPTED";return res.end('{"status":"ACCEPTED"}');}
+  if(url.pathname.endsWith("/openpgp"))return res.end('{"saved":true,"fingerprint":"aa"}');
   res.writeHead(404).end();
  }catch(error){report.errors.push(error.message);res.writeHead(500).end();}
 });
@@ -52,6 +55,8 @@ try {
  expect(await page.evaluate(()=>navigator.clipboard.readText())).toBe(alice);
  report.checks.push("Send opens popup; copy returns persisted link");
  await page.keyboard.press("Escape");
+ await expect(page.getByRole("button",{name:"Upload public key"})).toBeVisible();
+ report.checks.push("existing recipient offers an OpenPGP public-key upload");
  await page.getByRole("button",{name:"View secure links",exact:true}).click();
  await expect(page.getByLabel("Secure link for alice@example.test")).toHaveValue(alice);
  report.checks.push("dismissed popup reopens same link");

@@ -8,17 +8,25 @@ import { Input } from "@/components/ui/input";
 import { MAX_RECIPIENTS } from "@/lib/crypto/constants";
 import type { PreparedRecipient } from "@/lib/crypto/types";
 import { rewrapForRecipients } from "@/lib/crypto/worker-client";
+import { SenderKeyPicker } from "@/components/crypto/sender-key-picker";
+import { buildOpenPgpGrant, encryptOpenPgpGrant } from "@/lib/openpgp/document-grant";
+import { readImportedPublicKey } from "@/lib/openpgp/read-public-key";
+import type { SenderPublicKey } from "@/lib/openpgp/known-senders";
 import { prepareInvitation, recoverInvitationSecret } from "@/lib/shares/invitation-crypto";
 import { parseEmailText, parseRecipientFile } from "@/lib/recipients/parse";
 import { validateShareSchedule } from "@/lib/shares/schedule";
 
-type OwnerAccess = { fingerprintOwnerPublicKey?: JsonWebKey; existingFingerprints?: Array<{documentId: string; ownerWrappedKey: string}>; files: Array<{ documentId: string; status: string; wrappedFileKey: string | null }> };
+type OwnerAccess = { fingerprintOwnerPublicKey?: JsonWebKey; existingFingerprints?: Array<{documentId: string; ownerWrappedKey: string; shareId?: string}>; files: Array<{ documentId: string; status: string; wrappedFileKey: string | null }> };
+type RecipientKey = { armoredPublicKey: string; fingerprint: string; senderName?: string };
 
 export function SharePanel({ groupId, privateKey }: { groupId: string; privateKey?: CryptoKey }) {
   const active = useWorkspaceActive();
   const [loadingLinks, setLoadingLinks] = useState(true);
   const [savedSchedule, setSavedSchedule] = useState("");
   const fileRef = useRef<HTMLInputElement>(null);
+  const keyFileRef = useRef<HTMLInputElement>(null);
+  const keyTarget = useRef<string | null>(null);
+  const [recipientKeys, setRecipientKeys] = useState<Record<string, RecipientKey>>({});
   const [entry, setEntry] = useState("");
   const [emails, setEmails] = useState<string[]>([]);
   const [permission, setPermission] = useState<"VIEW_ONLY" | "VIEW_AND_DOWNLOAD">("VIEW_ONLY");
@@ -31,6 +39,11 @@ export function SharePanel({ groupId, privateKey }: { groupId: string; privateKe
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [openPgpEmails, setOpenPgpEmails] = useState<string[]>([]);
+  const [openPgpKnown, setOpenPgpKnown] = useState(false);
+  const [savedKey, setSavedKey] = useState<RecipientKey | null>(null);
+  const [senderTarget, setSenderTarget] = useState<string | null>(null);
+  const [senderFocus, setSenderFocus] = useState(0);
 
   const applyLinks = (body: { shares: CreatedShare[]; batchId: string | null; permission?: "VIEW_ONLY" | "VIEW_AND_DOWNLOAD"; availableFrom?: string | null; expiresAt?: string | null }) => {
     setShares(body.shares); setBatchId(body.batchId);
@@ -48,6 +61,16 @@ export function SharePanel({ groupId, privateKey }: { groupId: string; privateKe
       .catch(() => { if (!cancelled) setMessage("Could not restore an invitation link with this owner key."); });
     return () => { cancelled = true; };
   }, [privateKey, shares]);
+  useEffect(() => {
+    if (!active) return;
+    let cancelled = false;
+    fetch("/api/openpgp-keys", { cache: "no-store" }).then(async response => {
+      if (!response.ok) return;
+      const body = await response.json() as { key?: RecipientKey | null };
+      if (!cancelled && body.key?.armoredPublicKey && body.key.fingerprint) setSavedKey(body.key);
+    }).catch(() => undefined);
+    return () => { cancelled = true; };
+  }, [active]);
   useEffect(() => {
     if (!active) return;
     let cancelled = false;
@@ -118,7 +141,15 @@ export function SharePanel({ groupId, privateKey }: { groupId: string; privateKe
       attempted ? "Brevo accepted the invitations. Delivery is not yet confirmed." : "No invitations needed sending.");
   };
 
-  const create = async () => {
+  const sealShare = async (shareId: string, key: RecipientKey, documents: Array<{ documentId: string; ownerWrappedKey: string }>, fingerprints: Array<{ documentId: string; ownerWrappedKey: string }>) => {
+    if (!privateKey) throw new Error("Unlock your keys before using a public key.");
+    const grant = await buildOpenPgpGrant({ shareId, privateKey, documents, fingerprints });
+    const armoredMessage = await encryptOpenPgpGrant(key.armoredPublicKey, grant);
+    const saved = await fetch(`/api/shares/${shareId}/openpgp`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ armoredPublicKey: key.armoredPublicKey, armoredMessage }) });
+    if (!saved.ok) throw new Error((await saved.json()).error?.message ?? "Could not save the encrypted public-key grant.");
+  };
+
+  const create = async (accountKey: RecipientKey | null = null) => {
     if (!privateKey) return setMessage("Unlock your keys to add recipients. Existing links can still be copied or emailed.");
     const start = useOpening ? new Date(availableFrom) : null;
     const end = useExpiry ? new Date(expiresAt) : null;
@@ -146,6 +177,7 @@ export function SharePanel({ groupId, privateKey }: { groupId: string; privateKe
       const existingIds = new Set(shares.map(share => share.shareId));
       const issuedIds = new Set<string>();
       const used = [...(owner.existingFingerprints ?? [])];
+      const fingerprintsByEmail = new Map(wrapped.map((recipient) => [recipient.email, recipient.envelopes.flatMap((envelope) => envelope.fingerprint ? [{ documentId: envelope.documentId, ownerWrappedKey: envelope.fingerprint.ownerWrappedKey }] : [])]));
       for (const share of created.filter(item => item.status === "AWAITING_RECIPIENT_KEY")) {
         if (share.ownerWrappedInviteSecret) {
           share.shareUrl = `${share.shareBaseUrl}#invite=${await recoverInvitationSecret(share.ownerWrappedInviteSecret, privateKey)}`;
@@ -158,6 +190,7 @@ export function SharePanel({ groupId, privateKey }: { groupId: string; privateKe
             ownerWrappedSecret: invitation.ownerWrappedSecret, fingerprints: invitation.fingerprints }) });
         if (!issued.ok) throw new Error((await issued.json()).error?.message ?? "Could not save an invitation grant.");
         used.push(...invitation.fingerprints.map(({documentId, ownerWrappedKey}) => ({documentId, ownerWrappedKey})));
+        fingerprintsByEmail.set(share.recipientEmail, invitation.fingerprints.map(({ documentId, ownerWrappedKey }) => ({ documentId, ownerWrappedKey })));
         share.ownerWrappedInviteSecret = invitation.ownerWrappedSecret;
         share.shareUrl = `${share.shareBaseUrl}#invite=${invitation.inviteSecret}`;
         share.emailStatus = "NOT_REQUESTED";
@@ -165,6 +198,14 @@ export function SharePanel({ groupId, privateKey }: { groupId: string; privateKe
         issuedIds.add(share.shareId);
       }
       applyLinks({...body, shares: created}); setEmails([]); setDialogOpen(true);
+      for (const share of created) {
+        const key = recipientKeys[share.recipientEmail] ?? accountKey;
+        if (!key) continue;
+        await sealShare(share.shareId, key, documents, fingerprintsByEmail.get(share.recipientEmail) ?? []);
+      }
+      const protectedEmails = created.map(share => share.recipientEmail).filter(email => recipientKeys[email] || accountKey);
+      setOpenPgpEmails(protectedEmails.map(email => email.toLowerCase()));
+      setOpenPgpKnown(protectedEmails.length > 0);
       await deliver(created.filter(share => !existingIds.has(share.shareId) || issuedIds.has(share.shareId) ||
         (!emails.length && share.status === "AWAITING_RECIPIENT_KEY" && share.emailStatus !== "ACCEPTED")));
     } catch (error) { setMessage(error instanceof Error ? error.message : "Share creation failed."); }
@@ -173,13 +214,102 @@ export function SharePanel({ groupId, privateKey }: { groupId: string; privateKe
 
   const sendEmail = async (list = shares, resend = false) => { setBusy(true); try { await deliver(list, resend); } finally { setBusy(false); } };
 
+  const lockExistingWithSavedKey = async () => {
+    if (!savedKey) return setMessage("Save an OpenPGP public key on Profile first.");
+    if (!privateKey) return setMessage("Unlock your keys before using the saved public key.");
+    setBusy(true);
+    try {
+      const ownerResponse = await fetch(`/api/upload-groups/${groupId}/owner-access`, { cache: "no-store" });
+      const owner = await ownerResponse.json() as OwnerAccess & { error?: { message?: string } };
+      if (!ownerResponse.ok) throw new Error(owner.error?.message ?? "Owner keys unavailable.");
+      const docs = owner.files.filter((item) => item.status === "READY" && item.wrappedFileKey).map((item) => ({ documentId: item.documentId, ownerWrappedKey: item.wrappedFileKey! }));
+      for (const share of shares) {
+        const fingerprints = (owner.existingFingerprints ?? []).filter((item) => item.shareId === share.shareId).map(({ documentId, ownerWrappedKey }) => ({ documentId, ownerWrappedKey }));
+        await sealShare(share.shareId, savedKey, docs, fingerprints);
+      }
+      setOpenPgpEmails(shares.map((share) => share.recipientEmail.toLowerCase()));
+      setOpenPgpKnown(true);
+      setMessage("Saved public key applied. Open the link and upload the matching private key. The file stays locked until the keys match.");
+    } catch (error) { setMessage(error instanceof Error ? error.message : "Could not use the saved public key."); }
+    finally { setBusy(false); }
+  };
+
+  const useSavedPublicKey = async (email: string) => {
+    if (!savedKey) return setMessage("Save an OpenPGP public key on Profile first.");
+    if (!privateKey) return setMessage("Unlock your keys before using the saved public key.");
+    const share = shares.find((item) => item.recipientEmail === email);
+    if (!share) return;
+    setBusy(true);
+    try {
+      const ownerResponse = await fetch(`/api/upload-groups/${groupId}/owner-access`, { cache: "no-store" });
+      const owner = await ownerResponse.json() as OwnerAccess & { error?: { message?: string } };
+      if (!ownerResponse.ok) throw new Error(owner.error?.message ?? "Owner keys unavailable.");
+      const docs = owner.files.filter((item) => item.status === "READY" && item.wrappedFileKey).map((item) => ({ documentId: item.documentId, ownerWrappedKey: item.wrappedFileKey! }));
+      const fingerprints = (owner.existingFingerprints ?? []).filter((item) => item.shareId === share.shareId).map(({ documentId, ownerWrappedKey }) => ({ documentId, ownerWrappedKey }));
+      await sealShare(share.shareId, savedKey, docs, fingerprints);
+      setOpenPgpEmails((current) => [...new Set([...current, email.toLowerCase()])]);
+      setOpenPgpKnown(true);
+      setMessage("Saved public key applied. The share page opens the file only after the matching private key is uploaded.");
+    } catch (error) { setMessage(error instanceof Error ? error.message : "Could not use the saved public key."); }
+    finally { setBusy(false); }
+  };
+
+  const focusSenderSearch = (email: string) => {
+    keyTarget.current = email;
+    setSenderTarget(email);
+    setSenderFocus((value) => value + 1);
+  };
+  const applyRecipientKey = async (email: string, parsed: RecipientKey) => {
+    setRecipientKeys((current) => ({ ...current, [email]: parsed }));
+    const share = shares.find((item) => item.recipientEmail === email);
+    const label = parsed.senderName ? `${parsed.senderName}'s public key` : "Public key";
+    if (!share) { setMessage(`${label} added for ${email}. It will be used when you send.`); return; }
+    const ownerResponse = await fetch(`/api/upload-groups/${groupId}/owner-access`, { cache: "no-store" });
+    const owner = await ownerResponse.json() as OwnerAccess & { error?: { message?: string } };
+    if (!ownerResponse.ok) throw new Error(owner.error?.message ?? "Owner keys unavailable.");
+    const docs = owner.files.filter((item) => item.status === "READY" && item.wrappedFileKey).map((item) => ({ documentId: item.documentId, ownerWrappedKey: item.wrappedFileKey! }));
+    const fingerprints = (owner.existingFingerprints ?? []).filter((item) => item.shareId === share.shareId).map(({ documentId, ownerWrappedKey }) => ({ documentId, ownerWrappedKey }));
+    await sealShare(share.shareId, parsed, docs, fingerprints);
+    setOpenPgpEmails((current) => [...new Set([...current, email.toLowerCase()])]);
+    setOpenPgpKnown(true);
+    setMessage(`${label} saved. After they sign in with that email, the share page asks for their private key.`);
+  };
+  const onSenderKey = async (sender: SenderPublicKey) => {
+    const email = keyTarget.current;
+    if (!email) return setMessage(`Selected ${sender.name}. Choose Add public key on a recipient first.`);
+    if (!privateKey) return setMessage("Unlock your keys before adding a public key.");
+    setBusy(true);
+    try {
+      const parsed = await readImportedPublicKey(sender.armoredPublicKey);
+      await applyRecipientKey(email, { ...parsed, senderName: sender.name });
+    } catch (error) { setMessage(error instanceof Error ? error.message : "Could not use that public key."); }
+    finally { setBusy(false); }
+  };
+  const onPublicKey = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    const email = keyTarget.current;
+    event.target.value = "";
+    if (!file || !email) return;
+    if (!privateKey) return setMessage("Unlock your keys before uploading a public key.");
+    setBusy(true);
+    try {
+      const parsed = await readImportedPublicKey(await file.text());
+      await applyRecipientKey(email, parsed);
+    } catch (error) { setMessage(error instanceof Error ? error.message : "Could not use that public key."); }
+    finally { setBusy(false); }
+  };
+
   return (
     <section className="mt-5 rounded-2xl border-[3px] border-black bg-card p-4 shadow-md sm:p-5">
       <h2 className="font-head text-xl">2. Share securely</h2>
-      <p className="mt-1 text-sm text-muted-foreground">Add up to 100 emails manually or from CSV, TXT, or XLSX.</p>
+      <p className="mt-1 text-sm text-muted-foreground">Add up to 100 emails manually or from CSV, TXT, or XLSX. Sending uses your saved OpenPGP public key. The recipient must upload the matching private key before the file opens.</p>
       {loadingLinks && <p role="status">Loading existing secure links…</p>}
-      {batchId && <div className="mt-4 rounded-xl border-2 border-black bg-background p-3"><p className="font-bold">{shares.length} existing recipient{shares.length === 1 ? "" : "s"}</p><p className="my-2 text-sm">{shares.map(share => share.recipientEmail).join(", ")}</p><button type="button" disabled={busy} onClick={() => void reopenLinks()} className="rounded-full border-2 border-black bg-primary text-primary-foreground px-5 py-2.5 font-bold shadow-sm">View secure links</button><p className="mt-2 text-sm">Add recipients below. Existing permission and access times are preserved.</p>{shares.some(share => share.status === "AWAITING_RECIPIENT_KEY") && <button type="button" disabled={busy || !privateKey} onClick={() => void create()} className="mt-3 rounded-full border-2 border-black bg-primary text-primary-foreground px-5 py-2 font-bold disabled:opacity-40">Finish and send waiting invitations</button>}</div>}
+      {savedKey && <div className="mt-4 rounded-xl border-2 border-black bg-background p-3"><p className="font-bold">Public key for this link</p><p className="mt-1 text-sm">Your saved OpenPGP public key encrypts the invitation. The file stays locked until the recipient uploads the private key with this fingerprint.</p><p className="mt-2 break-all font-mono text-xs">{savedKey.fingerprint.toUpperCase().replace(/(.{4})/g, "$1 ").trim()}</p></div>}
+      {batchId && <div className="mt-4 rounded-xl border-2 border-black bg-background p-3"><p className="font-bold">{shares.length} existing recipient{shares.length === 1 ? "" : "s"}</p><div className="my-2 flex flex-wrap gap-2">{shares.map(share => <span key={share.shareId} className="flex items-center gap-2 rounded-full border-2 border-black bg-card px-3 py-1.5 text-xs font-bold">{share.recipientEmail}<button type="button" onClick={() => focusSenderSearch(share.recipientEmail)} className="rounded-full underline">{openPgpEmails.includes(share.recipientEmail.toLowerCase()) ? "Key added" : "Add public key"}</button></span>)}</div><button type="button" disabled={busy} onClick={() => void reopenLinks()} className="rounded-full border-2 border-black bg-primary text-primary-foreground px-5 py-2.5 font-bold shadow-sm">View secure links</button>{savedKey && <button type="button" disabled={busy || !privateKey} onClick={() => void lockExistingWithSavedKey()} className="ml-2 rounded-full border-2 border-black bg-primary text-primary-foreground px-5 py-2.5 font-bold shadow-sm disabled:opacity-40">Use saved public key</button>}<p className="mt-2 text-sm">Add recipients below. Existing permission and access times are preserved.</p>{shares.some(share => share.status === "AWAITING_RECIPIENT_KEY") && <button type="button" disabled={busy || !privateKey} onClick={() => void create(savedKey)} className="mt-3 rounded-full border-2 border-black bg-primary text-primary-foreground px-5 py-2 font-bold disabled:opacity-40">Finish and send waiting invitations</button>}</div>}
       {!privateKey && <p className="mt-3 text-sm">Unlock your keys to add recipients. You can view and share existing links now.</p>}
+      <input ref={keyFileRef} type="file" accept=".asc,.pgp,.txt,.key" aria-label="Upload OpenPGP public key" className="sr-only" onChange={(event) => void onPublicKey(event)} />
+      <SenderKeyPicker disabled={busy} focusSignal={senderFocus} targetLabel={senderTarget} onSelect={(sender) => void onSenderKey(sender)} />
+      <button type="button" disabled={busy || !senderTarget} onClick={() => keyFileRef.current?.click()} className="mt-2 rounded-full border-2 border-black bg-background px-4 py-2 text-sm font-bold shadow-sm disabled:opacity-50">Upload key file</button>
       <fieldset disabled={busy || loadingLinks || !privateKey}>
       <div className="mt-4 flex flex-wrap gap-2">
         <Input value={entry} onChange={(event) => setEntry(event.target.value)} placeholder="recipient@example.com" className="h-11 min-w-56 flex-1 rounded-xl border-2 border-black" />
@@ -187,10 +317,10 @@ export function SharePanel({ groupId, privateKey }: { groupId: string; privateKe
         <button type="button" onClick={() => fileRef.current?.click()} className="flex items-center gap-2 rounded-full border-2 border-black bg-background px-4 font-bold shadow-sm"><Upload className="size-4" /> Import</button>
         <input ref={fileRef} type="file" accept=".csv,.txt,.xlsx" className="sr-only" onChange={async (event) => { const file = event.target.files?.[0]; try { if (file) addEmails(await parseRecipientFile(file)); } catch (error) { setMessage(error instanceof Error ? error.message : "Could not read the list."); } event.target.value = ""; }} />
       </div>
-      <div className="mt-3 flex flex-wrap gap-2">{emails.map((email) => <span key={email} className="flex items-center gap-2 rounded-full border-2 border-black bg-muted px-3 py-1.5 text-xs font-bold">{email}<button type="button" aria-label={`Remove ${email}`} onClick={() => { setEmails((list) => list.filter((item) => item !== email)); }} className="rounded-full"><Trash2 className="size-3.5" /></button></span>)}</div>
+      <div className="mt-3 flex flex-wrap gap-2">{emails.map((email) => <span key={email} className="flex items-center gap-2 rounded-full border-2 border-black bg-muted px-3 py-1.5 text-xs font-bold">{email}<button type="button" onClick={() => focusSenderSearch(email)} className="rounded-full underline">{recipientKeys[email]?.senderName ?? (recipientKeys[email] ? "Key added" : "Add public key")}</button><button type="button" aria-label={`Remove ${email}`} onClick={() => { setEmails((list) => list.filter((item) => item !== email)); setRecipientKeys((current) => { const next = { ...current }; delete next[email]; return next; }); }} className="rounded-full"><Trash2 className="size-3.5" /></button></span>)}</div>
       <div className="mt-4 flex flex-wrap items-center gap-3">
         <span className="rounded-full border-2 border-black bg-background px-4 py-2 text-sm font-bold">{permission === "VIEW_ONLY" ? "View only" : "Existing link permissions retained"}</span>
-        <button type="button" disabled={busy || !emails.length} onClick={() => void create()} className="rounded-full border-2 border-black bg-primary text-primary-foreground px-5 py-2.5 font-head shadow-sm disabled:opacity-50">Send</button>
+        <button type="button" disabled={busy || !emails.length} onClick={() => void create(savedKey)} className="rounded-full border-2 border-black bg-primary text-primary-foreground px-5 py-2.5 font-head shadow-sm disabled:opacity-50">{savedKey ? "Send with saved public key" : "Send"}</button>
       </div>
       {!batchId && <details className="mt-4 rounded-xl border-2 border-black bg-background p-3">
         <summary className="cursor-pointer rounded-full font-bold">Access timing (optional)</summary>
@@ -202,7 +332,7 @@ export function SharePanel({ groupId, privateKey }: { groupId: string; privateKe
       </details>}
       </fieldset>
       <p className="mt-3 flex min-h-5 items-center gap-2 text-sm text-muted-foreground" aria-live="polite">{busy && <LoaderCircle className="size-4 animate-spin" />}{message}</p>
-      <ShareLinksDialog open={dialogOpen} onOpenChange={setDialogOpen} shares={shares} busy={busy} message={message} schedule={batchId ? savedSchedule : schedule} onSendEmail={() => void sendEmail()} onResend={id => { const share = shares.find(item => item.shareId === id); if (share) void sendEmail([share], true); }} />
+      <ShareLinksDialog open={dialogOpen} onOpenChange={setDialogOpen} shares={shares} busy={busy} message={message} schedule={batchId ? savedSchedule : schedule} openPgpEmails={openPgpEmails} openPgpKnown={openPgpKnown} onSendEmail={() => void sendEmail()} onResend={id => { const share = shares.find(item => item.shareId === id); if (share) void sendEmail([share], true); }} />
     </section>
   );
 }

@@ -24,11 +24,11 @@ export async function GET(_request: Request, context: RouteContext<"/api/upload-
     )).where(eq(documents.groupId, groupId));
     const enabled = experimentalFingerprintingEnabled();
     const [bundle] = enabled ? await getDb().select({ publicKeyJwk: userKeyBundles.publicKeyJwk }).from(userKeyBundles).where(eq(userKeyBundles.clerkUserId, user.userId)).limit(1) : [];
-    const fingerprints = enabled ? await getDb().select({ documentId: copyFingerprints.documentId, ownerWrappedKey: copyFingerprints.ownerWrappedKey }).from(copyFingerprints).innerJoin(documents, eq(documents.id, copyFingerprints.documentId)).where(eq(documents.groupId, groupId)) : [];
-    const pending = enabled ? await getDb().select({ fingerprints: invitationGrants.fingerprints }).from(invitationGrants)
+    const fingerprints = enabled ? await getDb().select({ documentId: copyFingerprints.documentId, shareId: copyFingerprints.shareId, ownerWrappedKey: copyFingerprints.ownerWrappedKey }).from(copyFingerprints).innerJoin(documents, eq(documents.id, copyFingerprints.documentId)).where(eq(documents.groupId, groupId)) : [];
+    const pending = enabled ? await getDb().select({ shareId: invitationGrants.shareId, fingerprints: invitationGrants.fingerprints }).from(invitationGrants)
       .innerJoin(shares, eq(shares.id, invitationGrants.shareId)).where(eq(shares.groupId, groupId)) : [];
     return json({ groupId, status: group.status, files, fingerprintOwnerPublicKey: bundle?.publicKeyJwk,
-      existingFingerprints: [...fingerprints, ...pending.flatMap(row => row.fingerprints.map(({documentId, ownerWrappedKey}) => ({documentId, ownerWrappedKey})))] });
+      existingFingerprints: [...fingerprints, ...pending.flatMap(row => row.fingerprints.map(({documentId, ownerWrappedKey}) => ({documentId, ownerWrappedKey, shareId: row.shareId})))] });
   } catch (error) {
     return safeRouteError(error);
   }

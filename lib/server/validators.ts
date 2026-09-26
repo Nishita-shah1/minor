@@ -43,6 +43,14 @@ export const prepareRecipients = z.object({
   recipientEmails: z.array(email).min(1).max(MAX_RECIPIENTS),
 });
 
+export const openPgpPublicKeyBody = z.object({
+  armoredPublicKey: z.string().trim().min(1).max(100_000),
+});
+
+export const openPgpKeyLookup = z.object({
+  emails: z.array(email).min(1).max(MAX_RECIPIENTS),
+});
+
 export const createShares = z.object({
   recipients: z.array(z.discriminatedUnion("status", [
     z.object({

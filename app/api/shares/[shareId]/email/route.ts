@@ -8,7 +8,11 @@ import { getAppEnv } from "@/lib/server/env";
 import { json, requireUuid, safeRouteError } from "@/lib/server/http";
 import { invitationProof } from "@/lib/shares/invitation-proof";
 
-const bodySchema = z.object({ attemptId: z.uuid(), invitationUrl: z.string().url().max(2_000).optional(), resend: z.boolean().optional() });
+const bodySchema = z.object({
+  attemptId: z.uuid(),
+  invitationUrl: z.string().url().max(2_000).optional(),
+  resend: z.boolean().optional(),
+});
 
 export async function POST(request: Request, context: { params: Promise<{ shareId: string }> }) {
   try {
@@ -49,8 +53,12 @@ export async function POST(request: Request, context: { params: Promise<{ shareI
       .returning({ id: shares.id });
     if (!claimed) return json({ error: { code: "EMAIL_BUSY", message: "An email attempt is already processing. Retry shortly." } }, { status: 409 });
     try {
-      const ids = await sendShareEmailBatch([{ recipientEmail: record.share.recipientEmailNormalized, shareUrl,
-        availableFrom: record.batch.availableFrom, expiresAt: record.batch.expiresAt }], attempt, user.primaryEmail);
+      const ids = await sendShareEmailBatch([{
+        recipientEmail: record.share.recipientEmailNormalized,
+        shareUrl,
+        availableFrom: record.batch.availableFrom,
+        expiresAt: record.batch.expiresAt,
+      }], attempt, user.primaryEmail);
       await getDb().update(shares).set({ emailStatus: "ACCEPTED", emailUpdatedAt: new Date(), providerMessageId: ids[0] })
         .where(and(eq(shares.id, shareId), eq(shares.emailAttemptId, attempt)));
       return json({ status: "ACCEPTED", message: "Brevo accepted the invitation. Delivery is not confirmed." });

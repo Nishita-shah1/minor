@@ -20,9 +20,13 @@ export type ShareEmail = {
   shareUrl?: string;
   availableFrom?: Date | null;
   expiresAt: Date | null;
+  encryptedMessage?: string;
 };
 
 function emailHtml(message: ShareEmail) {
+  if (message.encryptedMessage) {
+    return `<!doctype html><html><body style="font-family:Arial,sans-serif"><h1>EchoLeaks</h1><p>This message is encrypted to your OpenPGP public key. Decrypt it locally with your private key.</p><pre>${escapeHtml(message.encryptedMessage)}</pre></body></html>`;
+  }
   const address = escapeHtml(message.recipientEmail);
   const destination = message.shareUrl ?? `${getAppEnv().APP_URL}/sign-up`;
   const action = message.shareUrl ? "Open protected file" : "Create your EchoLeaks account";

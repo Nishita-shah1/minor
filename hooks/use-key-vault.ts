@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { forgetLocalPrivateKey, getLocalPrivateKey, saveLocalPrivateKey } from "@/lib/crypto/indexed-db";
 import type { KeyBundleResponse } from "@/lib/crypto/types";
 import { recoverKeyVault, setupKeyVault } from "@/lib/crypto/worker-client";
@@ -42,7 +42,7 @@ export function useKeyVault(clerkUserId: string | null | undefined) {
     void Promise.resolve().then(refresh);
   }, [refresh]);
 
-  const setup = async (passphrase: string) => {
+  const setup = useCallback(async (passphrase: string) => {
     if (!clerkUserId) throw new Error("Sign in first.");
     const result = await setupKeyVault(clerkUserId, passphrase);
     const response = await fetch("/api/key-vault", {
@@ -56,7 +56,18 @@ export function useKeyVault(clerkUserId: string | null | undefined) {
       fingerprint: result.bundle.publicKeyFingerprint,
     });
     setState({ status: "READY", bundle: result.bundle, privateKey: result.privateKey });
-  };
+  }, [clerkUserId]);
+
+  const setupRef = useRef(false);
+  useEffect(() => {
+    if (state.status !== "NEEDS_SETUP" || !clerkUserId || setupRef.current) return;
+    setupRef.current = true;
+    const passphrase = Array.from(crypto.getRandomValues(new Uint8Array(32)), (byte) => byte.toString(16).padStart(2, "0")).join("");
+    void setup(passphrase).catch((error: unknown) => {
+      setupRef.current = false;
+      setState({ status: "ERROR", message: error instanceof Error ? error.message : "Could not prepare encryption on this device." });
+    });
+  }, [clerkUserId, setup, state.status]);
 
   const unlock = async (passphrase: string) => {
     if (!clerkUserId || state.status !== "NEEDS_UNLOCK") throw new Error("No encrypted backup is available.");

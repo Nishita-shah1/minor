@@ -1,8 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-const mocks = vi.hoisted(() => ({ user: vi.fn(), send: vi.fn(), batch: vi.fn(), select: vi.fn(), update: vi.fn() }));
+const mocks = vi.hoisted(() => ({ user: vi.fn(), send: vi.fn(), batch: vi.fn(), select: vi.fn(), update: vi.fn(), keys: vi.fn() }));
 vi.mock("@/lib/auth/current-verified-user", () => ({ requireVerifiedUser: mocks.user, AuthenticationError: class extends Error {}, IdentityProviderUnavailableError: class extends Error {} }));
 vi.mock("@/lib/db", () => ({ getDb: () => ({ select: mocks.select, update: mocks.update, batch: mocks.batch }) }));
 vi.mock("@/lib/email/brevo", () => ({ sendShareEmailBatch: mocks.send }));
+vi.mock("@/lib/openpgp/published-keys", () => ({ publishedOpenPgpKeys: mocks.keys }));
 vi.mock("@/lib/server/env", () => ({ getAppEnv: () => ({ APP_URL: "https://example.test" }) }));
 import { POST } from "./route";
 const batchId = "11111111-1111-4111-8111-111111111111";
@@ -25,6 +26,7 @@ beforeEach(() => {
   mocks.update.mockImplementation(() => chain());
   mocks.batch.mockResolvedValue([[], [{ id: batchId }], [{ id: shareId, recipientEmailNormalized: "alice@example.test" }]]);
   mocks.send.mockResolvedValue(["provider-1"]);
+  mocks.keys.mockResolvedValue(new Map());
 });
 describe("owner email attempts", () => {
   it("sends the same persisted link through Brevo with an explicit attempt key", async () => {
@@ -55,6 +57,11 @@ describe("owner email attempts", () => {
     stored.expiresAt = new Date(0);
     expect((await POST(request(), context)).status).toBe(409);
     expect((await POST(new Request("https://example.test", {method:"POST",body:'{"attemptId":"bad"}'}), context)).status).toBe(400);
+    expect(mocks.send).not.toHaveBeenCalled();
+  });
+  it("does not send a plaintext link when a recipient published an OpenPGP key", async () => {
+    mocks.keys.mockResolvedValue(new Map([["alice@example.test", { armoredPublicKey: "key", fingerprint: "abc" }]]));
+    expect((await POST(request(), context)).status).toBe(409);
     expect(mocks.send).not.toHaveBeenCalled();
   });
   it("does not send when no active recipients remain", async () => {

@@ -44,6 +44,7 @@ export type ShareAccessResponse = {
   permission: "VIEW_ONLY" | "VIEW_AND_DOWNLOAD";
   availableFrom: string | null;
   expiresAt: string | null;
+  openpgp?: { armoredMessage: string; fingerprint: string } | null;
 };
 
 export type DocumentDownloadAccess = {

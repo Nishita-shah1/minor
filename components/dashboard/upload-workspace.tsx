@@ -3,7 +3,6 @@
 import { useUser } from "@clerk/nextjs";
 import { ArrowDown, ArrowUp, FileText, LoaderCircle, LockKeyhole, Plus, RotateCcw, ShieldCheck, Trash2, UploadCloud, X } from "lucide-react";
 import { useLayoutEffect, useRef, useState } from "react";
-import { KeyVaultDialog } from "@/components/crypto/key-vault-dialog";
 import { SharePanel } from "@/components/dashboard/share-panel";
 import { useKeyVault } from "@/hooks/use-key-vault";
 import { MAX_FILE_BYTES, MAX_GROUP_BYTES, MAX_GROUP_FILES } from "@/lib/crypto/constants";
@@ -37,7 +36,6 @@ export function UploadWorkspace() {
   const [groupReady, setGroupReady] = useState(false);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("Add files, review the group, then protect them together.");
-  const [vaultOpen, setVaultOpen] = useState(false);
 
   const updateItem = (id: string, patch: Partial<QueueItem>) => setItems((current) => current.map((item) => item.id === id ? { ...item, ...patch } : item));
   const readyCount = items.filter((item) => item.phase === "READY").length;
@@ -80,7 +78,8 @@ export function UploadWorkspace() {
   const protect = async () => {
     if (!items.length || busy) return;
     if (!window.isSecureContext) return setMessage("Browser encryption requires HTTPS or localhost.");
-    if (vault.state.status !== "READY") { setVaultOpen(true); return; }
+    if (vault.state.status === "CHECKING" || vault.state.status === "NEEDS_SETUP") return setMessage("Preparing encryption on this device…");
+    if (vault.state.status === "ERROR") return setMessage(vault.state.message);
     setBusy(true); setMessage("Creating private upload slots…");
     try {
       const response = await request("/api/upload-groups", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ fileCount: items.length }) });
@@ -162,8 +161,7 @@ export function UploadWorkspace() {
         {config && <p className="mt-3 font-bold">{readyCount} / {items.filter((item) => item.phase !== "DELETED").length} protected</p>}
         {failedCount > 0 && readyCount > 0 && <button type="button" disabled={busy} onClick={() => void continueWithoutFailed()} className="mt-3 rounded-full border-2 border-black bg-primary text-primary-foreground px-5 py-2.5 font-bold shadow-sm">Remove failed files and continue</button>}
         <p className="mt-3 min-h-6 text-sm text-muted-foreground" aria-live="polite">{message}</p>
-        {config && groupReady && vault.state.status === "READY" && <><SharePanel groupId={config.groupId} privateKey={vault.state.privateKey} /><button type="button" onClick={() => void deleteGroup()} className="mt-4 rounded-full border-2 border-black bg-destructive text-destructive-foreground px-5 py-2.5 font-bold shadow-sm"><Trash2 className="mr-2 inline size-4" /> Delete protected group</button></>}
-        <KeyVaultDialog open={vaultOpen} onOpenChange={setVaultOpen} state={vault.state} onSetup={vault.setup} onUnlock={vault.unlock} />
+        {config && groupReady && <><SharePanel groupId={config.groupId} privateKey={vault.state.status === "READY" ? vault.state.privateKey : undefined} /><button type="button" onClick={() => void deleteGroup()} className="mt-4 rounded-full border-2 border-black bg-destructive text-destructive-foreground px-5 py-2.5 font-bold shadow-sm"><Trash2 className="mr-2 inline size-4" /> Delete protected group</button></>}
       </div>
     </section>
   );

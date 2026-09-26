@@ -3,6 +3,7 @@ import { requireVerifiedUser } from "@/lib/auth/current-verified-user";
 import { getDb } from "@/lib/db";
 import { shareBatches, shares, uploadGroups } from "@/lib/db/schema";
 import { sendShareEmailBatch } from "@/lib/email/brevo";
+import { publishedOpenPgpKeys } from "@/lib/openpgp/published-keys";
 import { getAppEnv } from "@/lib/server/env";
 import { json, requireUuid, safeRouteError } from "@/lib/server/http";
 
@@ -42,6 +43,13 @@ export async function POST(request: Request, context: Context) {
     }
     const appUrl = getAppEnv().APP_URL.replace(/\/$/, "");
     try {
+      const keys = await publishedOpenPgpKeys(shareRows.map((share) => share.recipientEmailNormalized));
+      if (keys.size) {
+        await getDb().update(shareBatches).set({ emailStatus: "FAILED", updatedAt: new Date() }).where(and(
+          eq(shareBatches.id, batchId), eq(shareBatches.emailAttemptId, attemptId),
+        ));
+        return json({ error: { code: "OPENPGP_REQUIRED", message: "Send these invitations from the share panel so the browser can encrypt them to the published OpenPGP key." } }, { status: 409 });
+      }
       const messageIds = await sendShareEmailBatch(shareRows.map((share) => ({
         recipientEmail: share.recipientEmailNormalized,
         shareUrl: `${appUrl}/share/${share.id}`,
