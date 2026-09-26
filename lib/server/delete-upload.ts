@@ -5,11 +5,13 @@ import { getDb } from "@/lib/db";
 import { documentKeyEnvelopes, documents, shares, uploadGroups, copyFingerprints, invitationGrants } from "@/lib/db/schema";
 import { experimentalFingerprintingEnabled } from "@/lib/fingerprint/server-config";
 import { deleteEncryptedObject } from "@/lib/r2/objects";
+import { deleteSessionsForDocuments } from "@/lib/activity/sessions";
 
 async function eraseDocuments(rows: Array<{ id: string; objectKey: string | null }>) {
   await Promise.all(rows.map((row) => row.objectKey ? deleteEncryptedObject(row.objectKey) : Promise.resolve()));
   const ids = rows.map((row) => row.id);
   if (!ids.length) return;
+  await deleteSessionsForDocuments(ids);
   await getDb().batch([
     getDb().delete(documentKeyEnvelopes).where(inArray(documentKeyEnvelopes.documentId, ids)),
     ...(experimentalFingerprintingEnabled() ? [getDb().delete(copyFingerprints).where(inArray(copyFingerprints.documentId, ids))] : []),

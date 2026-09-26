@@ -59,7 +59,7 @@ export function HistoryWorkspace() {
   };
 
   const deleteFile = async (groupId: string, documentId: string, name: string) => {
-    if (!confirm(`Permanently remove encrypted bytes and key material for ${name}?`)) return;
+    if (!confirm(`Permanently remove encrypted bytes, key material, fingerprint records, and viewing activity for ${name}?`)) return;
     const response = await fetch(`/api/documents/${documentId}`, { method: "DELETE" });
     if (response.ok) {
       setNames((current) => current[groupId] ? ({ ...current, [groupId]: current[groupId].map((file) => file.documentId === documentId ? { ...file, status: "DELETED", metadata: null } : file) }) : current);

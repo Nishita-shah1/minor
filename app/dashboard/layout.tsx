@@ -2,7 +2,7 @@ import type { CSSProperties, ReactNode } from "react";
 import { auth } from "@clerk/nextjs/server";
 import { ThemeToggle } from "@/components/theme/theme-toggle";
 import { PersistentWorkspaces } from "@/components/dashboard/persistent-workspaces";
-import { ComingSoonPage } from "@/components/dashboard/coming-soon-page";
+import { DashboardWorkspace } from "@/components/dashboard/dashboard-workspace";
 import { UploadWorkspace } from "@/components/dashboard/upload-workspace";
 import { ScanWorkspace } from "@/components/fingerprint/scan-workspace";
 import { HistoryWorkspace } from "@/components/dashboard/history-workspace";
@@ -31,9 +31,7 @@ export default async function DashboardLayout({ children }: { children: ReactNod
           <ThemeToggle />
         </header>
         <PersistentWorkspaces userId={userId} sessionId={sessionId} views={{
-          dashboard: <ComingSoonPage label="Dashboard" title="Dashboard"
-            description="Your private workspace for protecting files and tracing where leaked copies came from."
-            panelDescription="The EchoLeaks foundation is ready. Upload, scanning, and case activity will arrive in the next phases." />,
+          dashboard: <DashboardWorkspace />,
           upload: <UploadWorkspace />,
           scan: <ScanWorkspace />,
           history: <HistoryWorkspace />,

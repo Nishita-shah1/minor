@@ -204,6 +204,67 @@ export const accessEvents = pgTable(
   (table) => [index("access_events_share_idx").on(table.shareId)],
 );
 
+export const viewingSessionStatus = pgEnum("viewing_session_status", [
+  "OPEN",
+  "EXPIRED",
+  "CLOSED",
+]);
+
+export const viewingSessions = pgTable(
+  "viewing_sessions",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    shareId: uuid("share_id")
+      .notNull()
+      .references(() => shares.id, { onDelete: "cascade" }),
+    documentId: uuid("document_id")
+      .notNull()
+      .references(() => documents.id, { onDelete: "cascade" }),
+    clerkUserId: text("clerk_user_id").notNull(),
+    status: viewingSessionStatus("status").notNull().default("OPEN"),
+    browserFamily: text("browser_family"),
+    platformCategory: text("platform_category"),
+    viewportBucket: text("viewport_bucket"),
+    dprBucket: text("dpr_bucket"),
+    webgpuOutcome: text("webgpu_outcome"),
+    estimatedVisibleMs: integer("estimated_visible_ms").notNull().default(0),
+    lastVisibleCreditAt: timestamp("last_visible_credit_at", { withTimezone: true }),
+    lastServerEventAt: timestamp("last_server_event_at", { withTimezone: true }),
+    openedAt: timestamp("opened_at", { withTimezone: true }).notNull().defaultNow(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    closedAt: timestamp("closed_at", { withTimezone: true }),
+    ...timestamps,
+  },
+  (table) => [
+    index("viewing_sessions_share_idx").on(table.shareId),
+    index("viewing_sessions_document_idx").on(table.documentId),
+    index("viewing_sessions_owner_lookup_idx").on(table.documentId, table.shareId),
+    index("viewing_sessions_user_opened_idx").on(table.clerkUserId, table.openedAt),
+  ],
+);
+
+export const sessionEvents = pgTable(
+  "session_events",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    sessionId: uuid("session_id")
+      .notNull()
+      .references(() => viewingSessions.id, { onDelete: "cascade" }),
+    sequence: integer("sequence").notNull(),
+    eventType: text("event_type").notNull(),
+    marked: integer("marked").notNull().default(0),
+    visible: integer("visible").notNull().default(0),
+    fullscreen: integer("fullscreen").notNull().default(0),
+    authorized: integer("authorized").notNull().default(0),
+    pageIndex: integer("page_index"),
+    serverReceivedAt: timestamp("server_received_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("session_events_sequence_idx").on(table.sessionId, table.sequence),
+    index("session_events_session_idx").on(table.sessionId),
+  ],
+);
+
 export const copyFingerprints = pgTable("copy_fingerprints", {
   id: uuid("id").primaryKey().defaultRandom(),
   documentId: uuid("document_id").notNull().references(() => documents.id, { onDelete: "cascade" }),
