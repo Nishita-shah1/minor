@@ -74,7 +74,7 @@ EchoLeaks does **not**:
 | Place | Purpose |
 | --- | --- |
 | `/` | Public landing |
-| `/dashboard` | Exposure risk overview |
+| `/dashboard` | Views, observed screenshot shortcuts, print attempts, and exposure risk |
 | `/dashboard/upload` | Encrypt and upload |
 | `/dashboard/history` | Manage groups and secure links |
 | `/dashboard/scan` | Investigate a screenshot |

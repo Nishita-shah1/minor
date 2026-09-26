@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { collectDisclosedViewerContext, type DisclosedViewerContext } from "@/lib/activity/context-buckets";
+import { isScreenshotShortcut } from "@/lib/activity/screenshot-shortcut";
 
 export type ViewerObservation = {
   marked: boolean;
@@ -18,6 +19,7 @@ type SessionEventType =
   | "FULLSCREEN_ENTER"
   | "FULLSCREEN_EXIT"
   | "PAGE_CHANGED"
+  | "SCREENSHOT_ATTEMPTED"
   | "PRINT_ATTEMPTED"
   | "COVERED"
   | "SESSION_CLOSED";
@@ -49,6 +51,8 @@ export function useViewingSession(shareId: string, documentId: string, enabled: 
   });
   const sessionRef = useRef<string | null>(null);
   const closed = useRef(false);
+  const lastPrintAt = useRef(0);
+  const lastScreenshotAt = useRef(0);
 
   const flush = useCallback(async () => {
     const id = sessionRef.current;
@@ -136,11 +140,27 @@ export function useViewingSession(shareId: string, documentId: string, enabled: 
         enqueue("HEARTBEAT");
       }
     }, 15_000);
-    const onPrint = () => enqueue("PRINT_ATTEMPTED");
+    const onPrint = () => {
+      const now = Date.now();
+      if (now - lastPrintAt.current < 1500) return;
+      lastPrintAt.current = now;
+      enqueue("PRINT_ATTEMPTED");
+    };
+    const onKey = (event: KeyboardEvent) => {
+      if (!isScreenshotShortcut(event)) return;
+      const now = Date.now();
+      if (now - lastScreenshotAt.current < 1500) return;
+      lastScreenshotAt.current = now;
+      enqueue("SCREENSHOT_ATTEMPTED");
+    };
     window.addEventListener("beforeprint", onPrint);
+    window.addEventListener("keydown", onKey, true);
+    window.addEventListener("keyup", onKey, true);
     return () => {
       clearInterval(heartbeat);
       window.removeEventListener("beforeprint", onPrint);
+      window.removeEventListener("keydown", onKey, true);
+      window.removeEventListener("keyup", onKey, true);
     };
   }, [enabled, sessionId, enqueue]);
 

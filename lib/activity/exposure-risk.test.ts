@@ -9,6 +9,7 @@ describe("scoreExposureRisk", () => {
       estimatedVisibleMs: 0,
       fullscreenExitCount: 0,
       visibilityHideCount: 0,
+      screenshotAttemptCount: 0,
       printAttemptCount: 0,
       pageChangeCount: 0,
       sessionCount: 1,
@@ -22,6 +23,7 @@ describe("scoreExposureRisk", () => {
       estimatedVisibleMs: 5 * 60_000,
       fullscreenExitCount: 2,
       visibilityHideCount: 3,
+      screenshotAttemptCount: 0,
       printAttemptCount: 1,
       pageChangeCount: 8,
       sessionCount: 5,
@@ -38,15 +40,30 @@ describe("scoreExposureRisk", () => {
     expect(bandForPercent(80)).toBe("high");
   });
 
+  it("raises risk when a screenshot shortcut is observed", () => {
+    const result = scoreExposureRisk({
+      estimatedVisibleMs: 0,
+      fullscreenExitCount: 0,
+      visibilityHideCount: 0,
+      screenshotAttemptCount: 1,
+      printAttemptCount: 0,
+      pageChangeCount: 0,
+      sessionCount: 1,
+    });
+    expect(result.percent).toBe(15);
+    expect(result.factors).toContain("Screenshot shortcut was attempted");
+  });
+
   it("merges session signals", () => {
     const merged = mergeSignals([
-      { estimatedVisibleMs: 1000, fullscreenExitCount: 1, visibilityHideCount: 0, printAttemptCount: 0, pageChangeCount: 1, sessionCount: 1 },
-      { estimatedVisibleMs: 2000, fullscreenExitCount: 0, visibilityHideCount: 2, printAttemptCount: 1, pageChangeCount: 3, sessionCount: 2 },
+      { estimatedVisibleMs: 1000, fullscreenExitCount: 1, visibilityHideCount: 0, screenshotAttemptCount: 2, printAttemptCount: 0, pageChangeCount: 1, sessionCount: 1 },
+      { estimatedVisibleMs: 2000, fullscreenExitCount: 0, visibilityHideCount: 2, screenshotAttemptCount: 1, printAttemptCount: 1, pageChangeCount: 3, sessionCount: 2 },
     ]);
     expect(merged).toEqual({
       estimatedVisibleMs: 3000,
       fullscreenExitCount: 1,
       visibilityHideCount: 2,
+      screenshotAttemptCount: 3,
       printAttemptCount: 1,
       pageChangeCount: 4,
       sessionCount: 3,

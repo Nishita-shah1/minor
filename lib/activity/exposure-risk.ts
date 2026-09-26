@@ -2,6 +2,7 @@ export type SessionSignals = {
   estimatedVisibleMs: number;
   fullscreenExitCount: number;
   visibilityHideCount: number;
+  screenshotAttemptCount: number;
   printAttemptCount: number;
   pageChangeCount: number;
   sessionCount: number;
@@ -37,6 +38,11 @@ export function scoreExposureRisk(signals: SessionSignals): ExposureRiskResult {
     factors.push("Tab or window hide while viewing");
   }
 
+  if (signals.screenshotAttemptCount > 0) {
+    percent += Math.min(15, signals.screenshotAttemptCount * 15);
+    factors.push("Screenshot shortcut was attempted");
+  }
+
   if (signals.printAttemptCount > 0) {
     percent += Math.min(15, signals.printAttemptCount * 15);
     factors.push("Print was attempted");
@@ -69,6 +75,7 @@ export function mergeSignals(parts: SessionSignals[]): SessionSignals {
       estimatedVisibleMs: acc.estimatedVisibleMs + part.estimatedVisibleMs,
       fullscreenExitCount: acc.fullscreenExitCount + part.fullscreenExitCount,
       visibilityHideCount: acc.visibilityHideCount + part.visibilityHideCount,
+      screenshotAttemptCount: acc.screenshotAttemptCount + part.screenshotAttemptCount,
       printAttemptCount: acc.printAttemptCount + part.printAttemptCount,
       pageChangeCount: acc.pageChangeCount + part.pageChangeCount,
       sessionCount: acc.sessionCount + part.sessionCount,
@@ -77,6 +84,7 @@ export function mergeSignals(parts: SessionSignals[]): SessionSignals {
       estimatedVisibleMs: 0,
       fullscreenExitCount: 0,
       visibilityHideCount: 0,
+      screenshotAttemptCount: 0,
       printAttemptCount: 0,
       pageChangeCount: 0,
       sessionCount: 0,
@@ -85,4 +93,4 @@ export function mergeSignals(parts: SessionSignals[]): SessionSignals {
 }
 
 export const EXPOSURE_RISK_DISCLAIMER =
-  "Exposure risk is an estimate from disclosed viewing behavior (visible time, fullscreen exits, tab hides, print attempts, page churn). It is not proof of a leak, screenshot, or hand copy. Fingerprint Scan remains a separate investigation tool.";
+  "Exposure risk is an estimate from disclosed viewing behavior (visible time, fullscreen exits, tab hides, observed screenshot shortcuts, print attempts, page churn). It is not proof of a leak or a hand copy. Phone photos and system tools that do not send a shortcut to the page are not counted. Fingerprint Scan remains a separate investigation tool.";

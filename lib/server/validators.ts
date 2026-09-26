@@ -95,6 +95,7 @@ export const sessionEventBatch = z.object({
       "FULLSCREEN_ENTER",
       "FULLSCREEN_EXIT",
       "PAGE_CHANGED",
+      "SCREENSHOT_ATTEMPTED",
       "PRINT_ATTEMPTED",
       "COVERED",
       "SESSION_CLOSED",
