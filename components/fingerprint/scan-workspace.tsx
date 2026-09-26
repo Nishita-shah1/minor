@@ -1,14 +1,17 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ScanLine, ShieldCheck, Upload, FlaskConical } from "lucide-react";
+import { DenseCropEngine } from "@/lib/fingerprint/dense/worker-client";
 import { BrowserFingerprintEngine } from "@/lib/fingerprint/worker-client";
 import type { Pixels } from "@/lib/fingerprint/types";
 import { renderLocalFile, syntheticPage } from "@/lib/fingerprint/lab/render";
 import { corners, type Point } from "@/lib/fingerprint/lab/alignment";
 import { investigate, type Investigation } from "@/lib/fingerprint/lab/investigate";
+import { embedDense } from "@/lib/fingerprint/dense/embed";
 import { identifierHex } from "@/lib/fingerprint/identity";
 import { CopyLookup, type LocalCandidate } from "./copy-lookup";
 import { FingerprintMatchScore } from "./fingerprint-match-score";
+import { RankedEvidence } from "./ranked-evidence";
 import { PixelPreview } from "./pixel-preview";
 
 const button = "inline-flex items-center justify-center gap-2 rounded-full border-2 border-black bg-primary text-primary-foreground px-5 py-2.5 text-sm font-bold shadow-md transition-transform hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-40";
@@ -22,6 +25,7 @@ export function ScanWorkspace() {
   const [lookupReady, setLookupReady] = useState(false);
   const [candidates, setCandidates] = useState<LocalCandidate[]>([]);
   const engine = useRef<BrowserFingerprintEngine | null>(null);
+  const dense = useRef<DenseCropEngine | null>(null);
   const generation = useRef(0);
   const originalFile = useRef<File | null>(null);
   const [page, setPage] = useState(1);
@@ -45,8 +49,12 @@ export function ScanWorkspace() {
     const localEngine = new BrowserFingerprintEngine(error => {
       epoch.current++; setBusy(false); setMarked(null); setResult(null); setMessage(error);
     });
+    const denseEngine = new DenseCropEngine(error => {
+      epoch.current++; setBusy(false); setMarked(null); setResult(null); setMessage(error);
+    });
     engine.current = localEngine;
-    return () => { epoch.current++; localEngine.cancel(); };
+    dense.current = denseEngine;
+    return () => { epoch.current++; localEngine.cancel(); denseEngine.cancel(); };
   }, []);
 
   const candidateSnapshot = useRef<string | null>(null);
@@ -71,7 +79,7 @@ export function ScanWorkspace() {
     finally { if (epoch === generation.current) setBusy(false); }
   }
   function reset() {
-    generation.current++; engine.current?.cancel(); setSelectArea(false); setAreaPoints([]);
+    generation.current++; engine.current?.cancel(); dense.current?.cancel(); setSelectArea(false); setAreaPoints([]);
     originalFile.current = null; setPage(1); setPageCount(1); setResizeNotice(""); setOriginalNotice("");
     setOriginal(null); setEvidence(null); setMarked(null); setTestId(""); setAligned(false);
     setOriginalPoints([]); setEvidencePoints([]); clearResult(); setBusy(false); setResetKey(k => k + 1);
@@ -97,26 +105,30 @@ export function ScanWorkspace() {
     if (!evidence || !engine.current || !lookupReady) return;
     const snapshot = candidateSnapshot.current;
     // Background lookup refreshes may zero old records; this scan owns its snapshot.
-    const scanCandidates = candidates.map(candidate => ({ ...candidate, identifier: candidate.identifier.slice() }));
+    const scanCandidates = candidates.map(candidate => ({ ...candidate, identifier: candidate.identifier.slice(), secret: candidate.secret?.slice() ?? null }));
     try { await run(async current => {
       setMessage("Preparing your scan…");
       const runtime = await engine.current!.initialize("decode");
       if (!current()) return;
       setMessage(runtime.provider === "wasm" ? "Analyzing your screenshot… This may take a moment." : "Analyzing your screenshot…");
       const start = performance.now();
+      const denseCandidates = scanCandidates.flatMap(candidate => candidate.secret ? [{ id: candidate.id, secret: candidate.secret, documentId: candidate.documentId }] : []);
       const response = await investigate({ original: original ?? evidence, evidence,
         ...(aligned ? { correspondence: { original: originalPoints, evidence: evidencePoints } } : {}),
-        candidates: scanCandidates, decode: pixels => engine.current!.decode(pixels) });
+        candidates: scanCandidates, decode: pixels => engine.current!.decode(pixels),
+        rankDense: denseCandidates.length ? async pixels => (await dense.current!.rank(pixels, original ? [page] : [1], denseCandidates)).value : undefined });
       if (!current()) return;
       if (snapshot !== candidateSnapshot.current) {
         setMessage("Recipient records changed. Analyze the screenshot again to refresh the result.");
         return;
       }
       setResult(response); setDuration(performance.now() - start);
-      setMessage(response.status === "CANDIDATE_MATCH" ? "Matching copy found." : response.status === "UNKNOWN_MARK" ? (candidates.length ? "Compatible fingerprint recovered, but it does not match the loaded recipient copies." : "Fingerprint recovered, but your account has no fingerprinted recipient copies to match it against.")
+      setMessage(response.status === "CANDIDATE_MATCH" ? "Matching copy found." : response.status === "PROBABLE_MATCH" ? "A cropped screenshot is consistent with one distributed copy. This is a relative score, not a probability."
+        : response.status === "UNKNOWN_MARK" ? (candidates.length ? "Compatible fingerprint recovered, but it does not match the loaded recipient copies." : "Fingerprint recovered, but your account has no fingerprinted recipient copies to match it against.")
         : response.status === "NO_RELIABLE_MARK" ? "No reliable fingerprint was recovered. No recipient has been identified."
+        : response.scores?.length ? "Inconclusive. The crop does not clear the margin, so no copy is named."
         : `Inconclusive — ${response.reason?.replaceAll("_", " ").toLowerCase() ?? "unable to establish a reliable result"}.`);
-    }); } finally { scanCandidates.forEach(candidate => candidate.identifier.fill(0)); }
+    }); } finally { scanCandidates.forEach(candidate => { candidate.identifier.fill(0); candidate.secret?.fill(0); }); }
   }
   async function createTestCopy() {
     if (!original || !engine.current) return;
@@ -124,7 +136,10 @@ export function ScanWorkspace() {
     await run(async current => {
       setMessage("Creating a low-visibility test fingerprint locally…");
       const identifier = testId ? Uint8Array.from(testId.match(/../g)!, byte => parseInt(byte, 16)) : crypto.getRandomValues(new Uint8Array(5));
-      const pixels = await engine.current!.encode(original, identifier, 1);
+      const secret = crypto.getRandomValues(new Uint8Array(32));
+      const trustmark = await engine.current!.encode(original, identifier, 1.5);
+      const pixels = (await embedDense(trustmark, secret, "00000000-0000-4000-8000-0000000000ab", page)).pixels;
+      secret.fill(0);
       if (!current()) return;
       setMarked(pixels); setTestId(identifierHex(identifier));
       setMessage("Test copy ready. Save its PNG or take a screenshot, then add that image above.");
@@ -195,6 +210,15 @@ export function ScanWorkspace() {
             <p className="text-xl font-bold">{candidates.find(candidate => candidate.id === result.candidateId)?.recipientName || "Recipient"}</p>
             <p className="break-all">{candidates.find(candidate => candidate.id === result.candidateId)?.recipientEmail}</p>
           </div>}
+          {(result.status === "PROBABLE_MATCH" || (result.status === "INCONCLUSIVE" && result.scores?.length)) && result.scores && result.regions !== undefined && result.margin !== undefined && <RankedEvidence
+            named={result.status === "PROBABLE_MATCH" ? candidates.find(candidate => candidate.id === result.candidateId)?.recipientName || "Recipient" : undefined}
+            regions={result.regions} margin={result.margin}
+            medianOther={result.medianOther} scalesAgreeing={result.scalesAgreeing}
+            scores={result.scores.map(score => {
+              const candidate = candidates.find(item => item.id === score.candidateId);
+              const label = [candidate?.recipientName, candidate?.recipientEmail].filter(Boolean).join(" · ");
+              return { ...score, label: label || score.candidateId };
+            })} />}
           <details className="rounded-lg border-2 border-black p-3">
             <summary className="cursor-pointer rounded-lg text-sm font-bold">Scan details</summary>
             <div className="mt-3 space-y-3 text-sm text-muted-foreground">

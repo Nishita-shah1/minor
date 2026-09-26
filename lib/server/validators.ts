@@ -62,7 +62,7 @@ export const createShares = z.object({
       envelopes: z.array(z.object({
         documentId,
         wrappedFileKey: base64url.max(1_000),
-        fingerprint: z.object({ ownerWrappedKey: base64url.max(1000), recipientWrappedKey: base64url.max(1000), profileId: z.literal("trustmark-q-lab-v2") }).optional(),
+        fingerprint: z.object({ ownerWrappedKey: base64url.max(1000), recipientWrappedKey: base64url.max(1000), profileId: z.enum(["trustmark-q-lab-v2", "trustmark-q-lab-v2+densecrop-v1"]) }).optional(),
       })).min(1).max(MAX_GROUP_FILES),
     }),
     z.object({ status: z.literal("NOT_ENROLLED"), email }),

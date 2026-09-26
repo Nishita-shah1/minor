@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { embedDense } from "@/lib/fingerprint/dense/embed";
+import { rankDense } from "@/lib/fingerprint/dense/rank";
 import { BrowserFingerprintEngine } from "@/lib/fingerprint/worker-client";
 import { identifierHex } from "@/lib/fingerprint/identity";
 import { renderLocalFile, syntheticPage } from "@/lib/fingerprint/lab/render";
@@ -12,6 +14,8 @@ export function FingerprintLab() {
   const canvas = useRef<HTMLCanvasElement>(null);
   const source = useRef<Pixels | null>(null);
   const engine = useRef<BrowserFingerprintEngine | null>(null);
+  const labSecret = useRef<Uint8Array | null>(null);
+  const labDocument = "00000000-0000-4000-8000-0000000000ab";
   const generation = useRef(0);
   const [busy, setBusy] = useState(false);
   const [loaded, setLoaded] = useState(false);
@@ -28,7 +32,7 @@ export function FingerprintLab() {
       setMarked(false); setBusy(false); setStatus(message);
     });
     engine.current = localEngine;
-    return () => { epoch.current++; localEngine.cancel(); source.current = null; };
+    return () => { epoch.current++; localEngine.cancel(); source.current = null; labSecret.current?.fill(0); labSecret.current = null; };
   }, []);
 
   function clearOutput() {
@@ -58,7 +62,11 @@ export function FingerprintLab() {
       setStatus("Checking WebGPU and encoding locally…");
       const token = Uint8Array.from(identifier.match(/../g)!, (x) => parseInt(x, 16));
       const start = performance.now();
-      const pixels = await engine.current.encode(source.current, token, strength);
+      labSecret.current?.fill(0);
+      const secret = crypto.getRandomValues(new Uint8Array(32));
+      labSecret.current = secret;
+      const trustmark = await engine.current.encode(source.current, token, strength);
+      const pixels = (await embedDense(trustmark, secret, labDocument, 1)).pixels;
       if (!current() || !canvas.current) return;
       canvas.current.width = pixels.width; canvas.current.height = pixels.height;
       const context = canvas.current.getContext("2d");
@@ -75,9 +83,18 @@ export function FingerprintLab() {
     const start = performance.now();
     const result = await engine.current.decode(pixels); // No expected identifier is sent to the decoder.
     if (!current()) return;
-    setStatus(result.status === "VALID_IDENTIFIER"
-      ? `Recovered identifier: ${identifierHex(result.identifier)} · corrected bits: ${result.correctedBits} · ${(performance.now() - start).toFixed(0)} ms. This is a lab identifier, not recipient attribution.`
-      : "NO_RELIABLE_MARK — no valid identifier recovered. No recipient can be named.");
+    if (result.status === "VALID_IDENTIFIER") {
+      setStatus(`Recovered identifier: ${identifierHex(result.identifier)} · corrected bits: ${result.correctedBits} · ${(performance.now() - start).toFixed(0)} ms. Exact TrustMark match, not a probability.`);
+      return;
+    }
+    if (!labSecret.current) { setStatus("NO_RELIABLE_MARK — no valid identifier recovered. No recipient can be named."); return; }
+    const ranked = await rankDense({ evidence: pixels, pages: [1], candidates: [{ id: "lab", secret: labSecret.current, documentId: labDocument }], captureScales: [1] });
+    if (!current()) return;
+    setStatus(ranked.status === "PROBABLE_MATCH"
+      ? `DenseCrop probable lab match ${ranked.scores[0]?.score.toFixed(2)} · regions ${ranked.regions} · margin ${ranked.margin.toFixed(2)}. Relative forensic score — not a probability.`
+      : ranked.status === "INCONCLUSIVE"
+        ? `DenseCrop inconclusive · top ${ranked.scores[0]?.score.toFixed(2) ?? "n/a"} · regions ${ranked.regions}. No copy is named.`
+        : "NO_RELIABLE_MARK — no valid identifier recovered. No recipient can be named.");
   }
 
   return <main className="mx-auto max-w-5xl space-y-6 p-6">

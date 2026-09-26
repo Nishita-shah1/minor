@@ -3,7 +3,7 @@ import { z } from "zod";
 import { requireVerifiedUser } from "@/lib/auth/current-verified-user";
 import { getDb } from "@/lib/db";
 import { documents, invitationGrants, shareBatches, shares, uploadGroups } from "@/lib/db/schema";
-import { EXPERIMENTAL_PROFILE } from "@/lib/fingerprint/copy-secret";
+import { ISSUED_PROFILE, TRUSTMARK_PROFILE } from "@/lib/fingerprint/profile";
 import { json, requireUuid, safeRouteError } from "@/lib/server/http";
 import { experimentalFingerprintingEnabled } from "@/lib/fingerprint/server-config";
 
@@ -11,7 +11,7 @@ const grantInput = z.object({
   ciphertext: z.string().min(20).max(15_000), iv: z.string().min(12).max(40).regex(/^[A-Za-z0-9_-]+$/),
   proof: z.string().min(40).max(60).regex(/^[A-Za-z0-9_-]+$/),
   ownerWrappedSecret: z.string().min(300).max(1_000).regex(/^[A-Za-z0-9_-]+$/),
-  fingerprints: z.array(z.object({ documentId: z.uuid(), ownerWrappedKey: z.string().min(300).max(1_000).regex(/^[A-Za-z0-9_-]+$/), profileId: z.literal(EXPERIMENTAL_PROFILE) })).min(1).max(10),
+  fingerprints: z.array(z.object({ documentId: z.uuid(), ownerWrappedKey: z.string().min(300).max(1_000).regex(/^[A-Za-z0-9_-]+$/), profileId: z.enum([TRUSTMARK_PROFILE, ISSUED_PROFILE]) })).min(1).max(10),
 });
 
 type Context = { params: Promise<{ shareId: string }> };

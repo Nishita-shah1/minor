@@ -55,6 +55,25 @@ it("never selects a single candidate without an exact valid identifier", async (
   expect((await investigate({ ...base, decode: async () => valid(a) })).candidateId).toBe("alice");
   expect((await investigate({ ...base, candidates: [...base.candidates, { id: "bob", identifier: a }], decode: async () => valid(a) })).status).toBe("INCONCLUSIVE");
 });
+it("tries TrustMark on a wide screenshot instead of failing before the first decode", async () => {
+  const evidence = pixels(953, 191, 28);
+  let decodedWidth = 0;
+  const result = await investigate({
+    original: evidence,
+    evidence,
+    candidates: [],
+    decode: async (framed) => {
+      decodedWidth = framed.width;
+      return { status: "NO_RELIABLE_MARK" };
+    },
+    rankDense: async () => ({ status: "INCONCLUSIVE", scores: [{ candidateId: "owner", score: 0.4 }], regions: 12, margin: 0.1, reason: "WEAK_MARGIN" }),
+  });
+  expect(decodedWidth / evidence.height).toBeLessThanOrEqual(2);
+  expect(result.reason).not.toBe("PROCESSING_FAILED");
+  expect(result.attempts).toBeGreaterThan(0);
+  expect(result.status).toBe("INCONCLUSIVE");
+  expect(result.scores?.[0]?.candidateId).toBe("owner");
+});
 it("invalid coverage cannot be rescued by a direct decoded identifier", async () => {
   let calls = 0;
   const result = await investigate({ original: pixels(), evidence: pixels(), correspondence: { original: corners(8, 32), evidence: corners(32, 32) }, candidates: [{ id: "alice", identifier: a }], decode: async () => { calls++; return valid(); } });

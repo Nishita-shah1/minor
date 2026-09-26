@@ -2,7 +2,7 @@
 
 **Date:** 2026-09-26
 
-**Status:** Design approved. Not implemented. Experimental and unqualified.
+**Status:** Revised after review. Not implemented. Experimental and unqualified.
 
 **Scope:** One local forensic layer added beside the existing TrustMark pipeline. This spec does not replace `docs/superpowers/specs/2026-09-25-webgpu-fingerprinting-design.md` and does not change TrustMark’s BCH packet, ONNX models, or exact-ID contract.
 
@@ -45,7 +45,13 @@ screenshot pixels stay in the browser
               no usable regions -> no reliable mark
 ```
 
-TrustMark decode still receives pixels only. Candidate secrets are used only by DenseCrop. No pixels, secrets, residuals, or scores are uploaded. No new database column, envelope, or `profileId`. Stored fingerprints remain `trustmark-q-lab-v2`. The same 32-byte copy secret and document id drive the carrier.
+TrustMark decode still receives pixels only. Candidate secrets are used only by DenseCrop. No pixels, secrets, residuals, or scores are uploaded. The same 32-byte copy secret and document id drive the carrier. There is no new database column and no migration. The existing `profile_id` text, and the same field inside invitation JSON, stores both versions for new copies:
+
+```text
+trustmark-q-lab-v2+densecrop-v1
+```
+
+That token means `trustmarkProfile: trustmark-q-lab-v2` and `denseProfile: densecrop-v1`. The TrustMark id stays `trustmark-q-lab-v2` so current ONNX assets and already issued rows keep their name. A legacy value of `trustmark-q-lab-v2` alone is TrustMark only: the scanner does not guess a dense version. Any other dense token is unavailable, and v1 math is not run against it. TrustMark still runs when its own token is known.
 
 If TrustMark encode or DenseCrop encode fails, the protected viewer stays covered. A TrustMark-only image is not shown.
 
@@ -59,27 +65,28 @@ For each rendered pixel, after TrustMark:
 marked = clamp(trustmarkPixel + strength(content) * recipientCarrier(x, y), 0, 255)
 ```
 
-`recipientCarrier` is bipolar in `[-1, 1]`. It is a structured field, regenerable without the original pixels. It is not independent noise and it is not a BCH payload.
+`recipientCarrier` is bipolar in `[-1, 1]`. It is a structured field, regenerable without the original pixels. It is not independent noise and it is not a BCH payload. The same block repeats at every tile of that scale. Absolute `tileX` and `tileY` are not part of the seed, so a crop from anywhere on the page is aligned by scale and phase only. A later super-grid may add spatial diversity; v1 does not.
 
-Seed, domain-separated:
+The block key is HMAC-SHA-256 over UTF-8 fields separated by NUL:
 
 ```text
-EchoLeaks/dense-crop/v1 || fingerprintSecret || documentId || page || scale || tileX || tileY || phase
+HMAC(fingerprintSecret,
+  "EchoLeaks/dense-crop/v1" || NUL || documentId || NUL || page || NUL || scale || NUL || phase)
 ```
 
-- PNG/JPEG uses page `1`.
-- PDF uses the rendered page index, starting at `1`.
-- Carrier periods: `32`, `64`, and `128` px.
-- Encode phases: `0` and half the period. Both are summed into that scale’s field.
-- Tile coordinates repeat the block across the page.
+Counter blocks `HMAC(key, message || counter)` fill one period. Each byte’s high bit maps to `+1` or `-1`. That block is repeated across the page.
 
-The same offset is added to R, G, and B. `strength(content)` uses the local standard deviation of luminance. Below `8` (0–255 scale) the strength is `0` and that region is unusable. Otherwise strength rises with variance and is capped at `3` code values. A local standard deviation of `32` maps to that cap. If the negative smoke names any recipient, lower the cap until it does not. Do not lower the match floors to make a strength pass.
+- PNG/JPEG uses page `1`. PDF uses the rendered page index, starting at `1`.
+- Carrier periods: `16`, `32`, `64`, and `128` px. The 16 px field is the lightest, 32 px is the strongest, and 64/128 sit between them.
+- Embedded phase tags: `0` and `half`. Tag `half` is a second block, added at a half-period offset. The detector slides the summed field. It does not search a tile index.
+
+The same offset is added to R, G, and B. Amplitude follows local luminance standard deviation: below 8 the floor is ±1, then ±3, and the cap is ±4. ±6 and ±8 stay off until a tune set shows they still leave TrustMark's exact id intact. A public sync pilot, not derived from the recipient secret, is mixed in only to recover scale and x/y phase. It is not identity evidence. Flat paper stays within about one code value. If a negative sample names any recipient, lower the cap. Do not lower the match floors to make a strength pass.
 
 ## Detection
 
 The detector does not need clean original pixels. It regenerates each candidate field from the owner-unwrapped secret.
 
-One alignment hypothesis is shared by every candidate. A hypothesis is a capture scale, a page, and one phase fraction. That fraction is applied to every carrier period the scaled evidence can hold, and the patches from those periods are pooled into one median. A candidate must not choose its own best shift.
+One alignment is shared by every candidate. The public pilot chooses the capture scale and the x/y phase. Every recipient is scored at that frozen alignment. A candidate must not choose its own best shift. Scores stay raw correlations. The UI may show `max(0, correlation) × 100` as `N/100` and must not treat that as a probability. Rank #1 stays unnamed when the 0.60 floor fails.
 
 Search lattice:
 
@@ -87,8 +94,12 @@ Search lattice:
 - Carrier periods scored only when the evidence short side can hold that window: `32` when the short side is at least `32`, `64` from `64`, `128` from `128`.
 - Detect phases: `0`, `0.25`, `0.5`, and `0.75` of the period being scored.
 - Patches are windows of that period, stride half the period. The usable set is chosen from the evidence only: a patch whose luminance standard deviation is under `8` is dropped for every candidate.
-- Each usable patch is mean-centered. Its score is the normalized correlation of that centered luminance with the mean-centered carrier, in `[-1, 1]`. There is no clean-original residual.
-- The candidate score for a hypothesis is the median of those patch scores. Usable-region count is the size of that shared patch set.
+- Correlation uses a normalized residual, never raw luminance. Document text is stronger than a ±3 code-value carrier, so each patch is filtered before the dot product:
+  1. Luminance `Y = 0.2126 R + 0.7152 G + 0.0722 B`.
+  2. High-pass: `Y` minus its 5×5 box mean.
+  3. Local contrast: divide by the local standard deviation over a window of `max(5, period / 4)`, with epsilon `1` in code-value units.
+  4. Mean-center that residual and L2-normalize it. L2-normalize the aligned carrier. The patch score is their dot product, in `[-1, 1]`.
+- The candidate score for a hypothesis is the median of those patch scores. Usable-region count is the size of that shared patch set. Phase search is only the offset lattice inside the repeating period. It is not a search for where the crop sat on the page.
 
 Page search:
 
@@ -96,7 +107,9 @@ Page search:
 - Otherwise PNG/JPEG is page `1`.
 - A PDF screenshot without a selected page searches `1..min(32, pageCount)` when a local original supplied the count, and `1..32` when it did not.
 
-A hypothesis is a probable-match candidate only when all three floors hold: median correlation `>= 0.60`, leader median minus runner-up median `>= 0.20`, and usable regions `>= 8`. If every passing hypothesis names the same copy, that copy is the probable match, taken from the passing hypothesis with the largest margin. If two passing hypotheses name different copies, the verdict is inconclusive. If none pass, and at least one hypothesis has a usable region, the verdict is inconclusive and the shortlist comes from the hypothesis with the largest margin, showing at most five scores and no winner. Zero usable regions and no TrustMark id is no reliable mark.
+Starting floors are experimental defaults, not a calibrated operating point: median correlation `>= 0.60`, leader median minus runner-up median `>= 0.20`, and usable regions `>= 8`. A tuning split may replace those three numbers. The held-out split must not be used to choose them. Until a recorded tuning run freezes replacements, the defaults stay in force and the UI keeps calling them experimental.
+
+If every passing hypothesis names the same copy, that copy is the probable match, taken from the passing hypothesis with the largest margin. If two passing hypotheses name different copies, the verdict is inconclusive. If none pass, and at least one hypothesis has a usable region, the verdict is inconclusive and the shortlist comes from the hypothesis with the largest margin, showing at most five scores and no winner. Zero usable regions and no TrustMark id is no reliable mark. An inconclusive crop is a successful abstention, not a miss to be repaired by naming the highest score.
 
 ## WebGPU
 
@@ -110,17 +123,26 @@ Exact match keeps the current ring. Probable match names the leading copy and sh
 
 ## Tests and claims
 
-Unit tests cover carrier regeneration, the variance floor, shared-hypothesis scoring, the three dense verdicts, and rejection of a highest-but-close score.
+Unit tests cover carrier regeneration, identical blocks at two tile origins, the variance floor, residual correlation rather than raw luminance, shared-hypothesis scoring, the three dense verdicts, and rejection of a highest-but-close score.
 
-The implementation smoke gate is 200 synthetic negatives plus small-window crops and light JPEG. Negatives must name no recipient. Misses are recorded. This smoke is not screenshot, phone-photo, or format-wide qualification.
+One regression is mandatory and fails the suite if it breaks: a clean page is TrustMark-encoded, then DenseCrop-encoded, then passed to the TrustMark decoder as a full-page screenshot. The decoder must return the same identifier it would have returned without DenseCrop. DenseCrop must not buy crop ranking by destroying exact full-page recovery.
 
-Later targets, not this implementation: at least 1,000 negatives before any demo reliability claim, and about 10,000 transformed negatives before the 100-candidate search is treated as characterized. Human readability review is not part of this spec. Calibration from scores to an error rate is a separate future spec.
+The tuning matrix, split into a tune set and a disjoint held-out set, is:
+
+- Crop sizes `128×128`, `96×96`, `64×64`, `48×48`, and `32×32`, taken from arbitrary page positions.
+- 100 candidate identities.
+- JPEG, resize, and brightness/contrast.
+- Unrelated negatives, including unmarked pages and wrong-document crops.
+
+Floors move only from the tune set. Held-out crops report correct probable matches, abstentions, and wrong names separately. A `32×32` or other tiny crop that returns inconclusive passes the abstain rule. The first smoke gate is still 200 synthetic negatives, and those negatives must name no recipient. That smoke, and even a finished held-out run, is not screenshot, phone-photo, or format-wide qualification.
+
+Later targets, not a claim this spec completes: at least 1,000 negatives before any demo reliability claim, and about 10,000 transformed negatives before the 100-candidate search is treated as characterized. Human readability review is not part of this spec. Calibration from scores to an error rate is a separate future spec.
 
 ## Files
 
 - New `lib/fingerprint/dense/` for the profile, carrier, strength, correlation, and verdict.
 - New `workers/dense-fingerprint.worker.ts`.
 - New Scan components for the probable match and the unnamed shortlist.
-- Edit the protected viewer, `lib/fingerprint/lab/investigate.ts`, Scan, the fingerprint lab, and the worker client.
+- Edit the protected viewer, `lib/fingerprint/lab/investigate.ts`, Scan, the fingerprint lab, the worker client, and the existing `profileId` writers and parsers (`lib/fingerprint/copy-secret.ts`, share validators, invitation JSON). No Drizzle migration.
 - Leave `lib/fingerprint/trustmark/bch.ts` unchanged.
 - Update `ARCHITECTURE.md` and `memory/memory.md` when the code lands.

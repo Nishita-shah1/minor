@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { openPdfDocument } from "@/lib/fingerprint/pdf-document";
 import { renderLocalFile } from "@/lib/fingerprint/lab/render";
+import { DenseCropEngine } from "@/lib/fingerprint/dense/worker-client";
 import { BrowserFingerprintEngine } from "@/lib/fingerprint/worker-client";
 import { PixelPreview } from "@/components/fingerprint/pixel-preview";
 import { useViewingSession } from "@/hooks/use-viewing-session";
@@ -13,12 +14,20 @@ type Props = {
   shareId: string;
   documentId: string;
   fingerprintId?: Uint8Array;
+  fingerprintSecret?: Uint8Array;
   permission: "VIEW_ONLY" | "VIEW_AND_DOWNLOAD";
   metadata: FileMetadata;
   bytes: ArrayBuffer;
 };
 
-export function SecureViewer({ shareId, documentId, fingerprintId, metadata, bytes }: Props) {
+export function SecureViewer({
+  shareId,
+  documentId,
+  fingerprintId,
+  fingerprintSecret,
+  metadata,
+  bytes,
+}: Props) {
   if (!fingerprintId) {
     return (
       <section className="mt-5 rounded-xl border-2 border-black bg-card p-6">
@@ -39,6 +48,7 @@ export function SecureViewer({ shareId, documentId, fingerprintId, metadata, byt
         bytes={bytes}
         metadata={metadata}
         fingerprintId={fingerprintId}
+        fingerprintSecret={fingerprintSecret}
         shareId={shareId}
         documentId={documentId}
       />
@@ -50,9 +60,10 @@ function DocumentPages({
   bytes,
   metadata,
   fingerprintId,
+  fingerprintSecret,
   shareId,
   documentId,
-}: Pick<Props, "bytes" | "metadata" | "fingerprintId" | "shareId" | "documentId">) {
+}: Pick<Props, "bytes" | "metadata" | "fingerprintId" | "fingerprintSecret" | "shareId" | "documentId">) {
   const root = useRef<HTMLDivElement>(null);
   const [runtime, setRuntime] = useState("");
   const [webgpuOutcome, setWebgpuOutcome] = useState<"ready" | "unavailable" | "unknown">("unknown");
@@ -68,6 +79,7 @@ function DocumentPages({
   const [visible, setVisible] = useState(true);
   const pdf = useRef<Awaited<ReturnType<typeof openPdfDocument>> | null>(null);
   const engine = useRef<BrowserFingerprintEngine | null>(null);
+  const dense = useRef<DenseCropEngine | null>(null);
   const [ready, setReady] = useState(false);
   const lastConfirmation = useRef(0);
   const authorizationEpoch = useRef(0);
@@ -83,7 +95,13 @@ function DocumentPages({
       setError(message);
       setAuthorized(false);
     });
+    const denseEngine = new DenseCropEngine((message) => {
+      setPixels(null);
+      setError(message);
+      setAuthorized(false);
+    });
     engine.current = inference;
+    dense.current = denseEngine;
     void (async () => {
       try {
         if (fingerprintId) {
@@ -113,6 +131,7 @@ function DocumentPages({
     return () => {
       cancelled = true;
       inference.cancel();
+      denseEngine.cancel();
       void pdf.current?.dispose();
       pdf.current = null;
     };
@@ -133,7 +152,14 @@ function DocumentPages({
             },
           });
         if (cancelled) return;
-        const output = fingerprintId ? await engine.current!.encode(clean, fingerprintId, 1) : clean;
+        let output = fingerprintId ? await engine.current!.encode(clean, fingerprintId, 1.5) : clean;
+        if (fingerprintSecret) {
+          const marked = await dense.current!.embed(output, fingerprintSecret, documentId, page);
+          output = marked.value;
+          if (!cancelled) {
+            setRuntime(marked.runtime.provider === "wasm" ? "local CPU" : "WebGPU");
+          }
+        }
         if (!cancelled) {
           setPixels(output);
           setBusy(false);
@@ -151,7 +177,7 @@ function DocumentPages({
     return () => {
       cancelled = true;
     };
-  }, [ready, page, bytes, fingerprintId, metadata.name, metadata.type, session.consented]);
+  }, [ready, page, bytes, fingerprintId, fingerprintSecret, documentId, metadata.name, metadata.type, session.consented]);
 
   useEffect(() => {
     if (!fingerprintId || !session.consented) return;
@@ -270,6 +296,10 @@ function DocumentPages({
     setPage(next);
   }
 
+  const fingerprintNotice = fingerprintSecret
+    ? `Experimental fingerprint · TrustMark plus DenseCrop on this device (${runtime || "preparing"}). Crop ranking is unqualified and is not a probability.`
+    : `Experimental TrustMark fingerprint · marked on this device (${runtime || "preparing"}). This copy has no DenseCrop version.`;
+
   return (
     <div ref={root} className="space-y-4 overflow-auto rounded-xl bg-background p-3">
       <div className="flex flex-wrap items-center justify-center gap-3 print:hidden">
@@ -286,9 +316,7 @@ function DocumentPages({
           </button>
         )}
       </div>
-      <p className="text-sm">
-        Experimental low-visibility fingerprint · marked on this device ({runtime || "preparing"}). Crops and phone photos are not qualified.
-      </p>
+      <p className="text-sm">{fingerprintNotice}</p>
       {session.error && <p role="alert" className="text-sm text-destructive">{session.error}</p>}
       {resolutionNotice && (
         <p role="note" className="text-sm">{resolutionNotice} Screenshot recovery at this size is unqualified.</p>
