@@ -13,7 +13,6 @@ export async function GET(_request: Request, context: RouteContext<"/api/shares/
       groupId: shares.groupId,
       shareStatus: shares.status,
       permission: shares.permission,
-      cameraRequired: shares.cameraRequired,
       recipientClerkUserId: shares.recipientClerkUserId,
       recipientEmailNormalized: shares.recipientEmailNormalized,
       groupStatus: uploadGroups.status,
@@ -66,7 +65,6 @@ export async function GET(_request: Request, context: RouteContext<"/api/shares/
     return json({
       groupId: record.groupId,
       permission: record.permission,
-      cameraRequired: record.cameraRequired,
       availableFrom: record.availableFrom?.toISOString() ?? null,
       expiresAt: record.expiresAt?.toISOString() ?? null,
       documents: await loadDocuments(record.groupId, user.userId),

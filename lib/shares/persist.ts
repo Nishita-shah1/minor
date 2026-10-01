@@ -4,13 +4,12 @@ import { sql } from "drizzle-orm";
 // A fresh statement snapshot sees recipients appended by preceding transactions.
 export function appendRecipientsSql(groupId: string, ownerId: string, recipients: Array<{
   recipientName?: string | null; id: string; email: string; userId: string | null; status: string;
-  cameraRequired: boolean;
   keyVersion: number | null; envelopes: Array<{ documentId: string; wrappedFileKey: string; fingerprint?: {ownerWrappedKey: string; recipientWrappedKey: string; profileId: string} }>;
 }>, fingerprintsEnabled = false) {
   return sql`
     WITH incoming AS (
       SELECT * FROM jsonb_to_recordset(${JSON.stringify(recipients)}::jsonb)
-      AS r(id uuid, "recipientName" text, email text, "userId" text, status text, "cameraRequired" boolean, "keyVersion" integer, envelopes jsonb)
+      AS r(id uuid, "recipientName" text, email text, "userId" text, status text, "keyVersion" integer, envelopes jsonb)
     ), batch AS (
       SELECT b.* FROM share_batches b JOIN upload_groups g ON g.id = b.group_id
       WHERE g.id = ${groupId}::uuid AND g.owner_clerk_user_id = ${ownerId} AND g.status = 'READY'
@@ -23,8 +22,8 @@ export function appendRecipientsSql(groupId: string, ownerId: string, recipients
       SELECT (SELECT count(*) FROM shares WHERE group_id = ${groupId}::uuid)
         + (SELECT count(*) FROM additions) <= 100 AS allowed
     ), inserted AS (
-      INSERT INTO shares (id, batch_id, group_id, sender_clerk_user_id, recipient_clerk_user_id, recipient_email_normalized, recipient_name, permission, camera_required, status)
-      SELECT r.id, b.id, b.group_id, b.sender_clerk_user_id, r."userId", r.email, r."recipientName", 'VIEW_ONLY'::share_permission, r."cameraRequired", r.status::share_status
+      INSERT INTO shares (id, batch_id, group_id, sender_clerk_user_id, recipient_clerk_user_id, recipient_email_normalized, recipient_name, permission, status)
+      SELECT r.id, b.id, b.group_id, b.sender_clerk_user_id, r."userId", r.email, r."recipientName", 'VIEW_ONLY'::share_permission, r.status::share_status
       FROM additions r CROSS JOIN batch b CROSS JOIN allowance a
       WHERE a.allowed AND b.email_status <> 'SENDING'
       RETURNING id

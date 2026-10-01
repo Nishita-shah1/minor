@@ -20,8 +20,6 @@ const panel = "space-y-5 rounded-xl border-2 border-black bg-card p-5 shadow-md 
 const field = "block w-full rounded-lg border-2 border-black bg-background p-3 text-sm file:mr-3 file:rounded-full file:border-2 file:border-black file:bg-primary file:text-primary-foreground file:px-3 file:py-1 file:font-bold";
 
 export function ScanWorkspace() {
-  const [selectArea, setSelectArea] = useState(false);
-  const [areaPoints, setAreaPoints] = useState<Point[]>([]);
   const [lookupReady, setLookupReady] = useState(false);
   const [candidates, setCandidates] = useState<LocalCandidate[]>([]);
   const engine = useRef<BrowserFingerprintEngine | null>(null);
@@ -79,7 +77,7 @@ export function ScanWorkspace() {
     finally { if (epoch === generation.current) setBusy(false); }
   }
   function reset() {
-    generation.current++; engine.current?.cancel(); dense.current?.cancel(); setSelectArea(false); setAreaPoints([]);
+    generation.current++; engine.current?.cancel(); dense.current?.cancel();
     originalFile.current = null; setPage(1); setPageCount(1); setResizeNotice(""); setOriginalNotice("");
     setOriginal(null); setEvidence(null); setMarked(null); setTestId(""); setAligned(false);
     setOriginalPoints([]); setEvidencePoints([]); clearResult(); setBusy(false); setResetKey(k => k + 1);
@@ -87,7 +85,7 @@ export function ScanWorkspace() {
   }
   async function load(file: File, target: "original" | "evidence", pageNumber = 1) {
     if (target === "evidence" && !["image/png", "image/jpeg"].includes(file.type)) { setEvidence(null); setEvidencePoints([]); setAligned(false); setMessage("Choose a PNG or JPEG image."); clearResult(); return; }
-    setAligned(false); setSelectArea(false); setAreaPoints([]);
+    setAligned(false);
     if (target === "evidence") setResizeNotice("");
     if (target === "evidence") { setEvidence(null); setEvidencePoints([]); }
     else { setOriginal(null); setOriginalPoints([]); setMarked(null); setOriginalNotice(""); if (file !== originalFile.current) setTestId(""); }
@@ -126,7 +124,7 @@ export function ScanWorkspace() {
       setMessage(response.status === "CANDIDATE_MATCH" ? "Matching copy found." : response.status === "PROBABLE_MATCH" ? "A cropped screenshot is consistent with one distributed copy. This is a relative score, not a probability."
         : response.status === "UNKNOWN_MARK" ? (candidates.length ? "Compatible fingerprint recovered, but it does not match the loaded recipient copies." : "Fingerprint recovered, but your account has no fingerprinted recipient copies to match it against.")
         : response.status === "NO_RELIABLE_MARK" ? "No reliable fingerprint was recovered. No recipient has been identified."
-        : response.scores?.length ? "Inconclusive. The crop does not clear the margin, so no copy is named."
+        : response.scores?.length ? "Inconclusive."
         : `Inconclusive — ${response.reason?.replaceAll("_", " ").toLowerCase() ?? "unable to establish a reliable result"}.`);
     }); } finally { scanCandidates.forEach(candidate => { candidate.identifier.fill(0); candidate.secret?.fill(0); }); }
   }
@@ -160,18 +158,6 @@ export function ScanWorkspace() {
       } finally { if (url) URL.revokeObjectURL(url); canvas.width = canvas.height = 0; }
     });
   }
-  function useSelectedArea() {
-    if (!evidence || areaPoints.length !== 2) return;
-    const left = Math.max(0, Math.floor(Math.min(areaPoints[0].x, areaPoints[1].x)));
-    const top = Math.max(0, Math.floor(Math.min(areaPoints[0].y, areaPoints[1].y)));
-    const width = Math.min(evidence.width, Math.ceil(Math.max(areaPoints[0].x, areaPoints[1].x))) - left;
-    const height = Math.min(evidence.height, Math.ceil(Math.max(areaPoints[0].y, areaPoints[1].y))) - top;
-    if (width < 32 || height < 32) {setMessage("Select a larger document area.");return;}
-    const data = new Uint8ClampedArray(width * height * 4);
-    for (let row = 0; row < height; row++) data.set(evidence.data.subarray(((top + row) * evidence.width + left) * 4, ((top + row) * evidence.width + left + width) * 4), row * width * 4);
-    setEvidence({data,width,height}); setAligned(false); setEvidencePoints([]); setSelectArea(false); setAreaPoints([]); clearResult();
-    setMessage("Document area selected locally. Analyze to check its fingerprint.");
-  }
   const canAlign = !!original && !!evidence;
   const geometryReady = !aligned || (canAlign && originalPoints.length === 4 && evidencePoints.length === 4);
 
@@ -188,13 +174,9 @@ export function ScanWorkspace() {
         <label className="block space-y-2 font-bold">PNG or JPEG image
           <input key={`e-${resetKey}`} aria-label="Screenshot image" className={field} type="file" accept="image/png,image/jpeg" disabled={busy} onChange={e => { const file = e.target.files?.[0]; e.target.value = ""; if (file) void load(file, "evidence"); }} />
         </label>
-        <p className="text-sm text-muted-foreground">PNG or JPEG, up to 25 MiB. Select the document area if your screenshot includes browser controls.</p>
+        <p className="text-sm text-muted-foreground">PNG or JPEG, up to 25 MiB.</p>
         {resizeNotice && <p role="note" className="text-sm text-muted-foreground">{resizeNotice}</p>}
-        {evidence && <>
-          <PixelPreview pixels={evidence} label="Screenshot preview" points={areaPoints} disabled={busy || areaPoints.length >= 2} onPoint={selectArea ? point => setAreaPoints(points => [...points,point]) : undefined} />
-          <button className={secondaryButton} disabled={busy} onClick={() => {setSelectArea(value => !value);setAreaPoints([]);}}>{selectArea ? "Cancel selection" : "Select document area"}</button>
-          {selectArea && <><p className="text-sm">Click the top-left and bottom-right corners of the document in your full-screen screenshot.</p><button className={button} disabled={areaPoints.length !== 2 || busy} onClick={useSelectedArea}>Use selected area</button></>}
-        </>}
+        {evidence && <PixelPreview pixels={evidence} label="Screenshot preview" />}
         <div className="flex flex-wrap gap-3">
           <button className={button} disabled={busy || !evidence || !geometryReady || !lookupReady} onClick={() => void analyze()}><ScanLine aria-hidden="true" size={18} />{busy ? "Processing…" : "Analyze screenshot"}</button>
           <button className={secondaryButton} onClick={reset}>Clear images</button>
@@ -202,7 +184,7 @@ export function ScanWorkspace() {
       </section>
       <section className={panel}>
         <h2 className="flex items-center gap-3 font-head text-2xl"><ShieldCheck aria-hidden="true" /> Result</h2>
-        <p role="status" aria-live="polite" className="rounded-lg border-2 border-black bg-background p-4">{result && !lookupReady ? "Refreshing recipient records…" : message}</p>
+        {!(result && lookupReady && (result.status === "PROBABLE_MATCH" || (result.status === "INCONCLUSIVE" && result.scores?.length))) && <p role="status" aria-live="polite" className="rounded-lg border-2 border-black bg-background p-4">{result && !lookupReady ? "Refreshing recipient records…" : message}</p>}
         {result && <div hidden={!lookupReady} className="space-y-3" data-testid="scan-result">
           {result.status === "CANDIDATE_MATCH" && <div className="space-y-4 rounded-xl border-2 border-black bg-background p-4">
             <FingerprintMatchScore />
@@ -210,18 +192,17 @@ export function ScanWorkspace() {
             <p className="text-xl font-bold">{candidates.find(candidate => candidate.id === result.candidateId)?.recipientName || "Recipient"}</p>
             <p className="break-all">{candidates.find(candidate => candidate.id === result.candidateId)?.recipientEmail}</p>
           </div>}
-          {(result.status === "PROBABLE_MATCH" || (result.status === "INCONCLUSIVE" && result.scores?.length)) && result.scores && result.regions !== undefined && result.margin !== undefined && <RankedEvidence
+          {(result.status === "PROBABLE_MATCH" || (result.status === "INCONCLUSIVE" && result.scores?.length)) && result.scores && <RankedEvidence
             named={result.status === "PROBABLE_MATCH" ? candidates.find(candidate => candidate.id === result.candidateId)?.recipientName || "Recipient" : undefined}
-            regions={result.regions} margin={result.margin}
-            medianOther={result.medianOther} scalesAgreeing={result.scalesAgreeing}
+            namedKey={result.status === "PROBABLE_MATCH" ? (() => { const candidate = candidates.find(item => item.id === result.candidateId); return candidate?.recipientEmail || candidate?.recipientName || result.candidateId; })() : undefined}
             scores={result.scores.map(score => {
               const candidate = candidates.find(item => item.id === score.candidateId);
-              const label = [candidate?.recipientName, candidate?.recipientEmail].filter(Boolean).join(" · ");
-              return { ...score, label: label || score.candidateId };
+              return { ...score, label: candidate?.recipientName || candidate?.recipientEmail || "Recipient", email: candidate?.recipientEmail ?? "", personKey: candidate?.recipientEmail || candidate?.recipientName || score.candidateId };
             })} />}
           <details className="rounded-lg border-2 border-black p-3">
             <summary className="cursor-pointer rounded-lg text-sm font-bold">Scan details</summary>
             <div className="mt-3 space-y-3 text-sm text-muted-foreground">
+              <p>{result.status}</p>
               {result.status === "CANDIDATE_MATCH" && <p className="break-all">Share ID: {candidates.find(candidate => candidate.id === result.candidateId)?.shareId}</p>}
               {result.identifier && <div><p>Fingerprint ID</p><output data-testid="recovered-identifier" className="break-all font-mono text-foreground">{result.identifier}</output></div>}
               <p>{result.attempts} decode attempt{result.attempts === 1 ? "" : "s"} · {duration?.toFixed(0)} ms{result.coverage !== null ? ` · ${(result.coverage * 100).toFixed(1)}% observed coverage` : ""}</p>

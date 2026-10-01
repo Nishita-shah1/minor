@@ -1,8 +1,8 @@
 "use client";
 
 import { SignOutButton, useUser } from "@clerk/nextjs";
-import { AlertTriangle, Camera, FileText, KeyRound, LoaderCircle, LogOut, Trash2 } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { AlertTriangle, FileText, KeyRound, LoaderCircle, LogOut, Trash2 } from "lucide-react";
+import { useEffect, useState } from "react";
 import { BrowserFingerprintEngine } from "@/lib/fingerprint/worker-client";
 import { unwrapCopyMaterial } from "@/lib/fingerprint/copy-secret";
 import { parseIssuedProfile } from "@/lib/fingerprint/profile";
@@ -13,8 +13,6 @@ import { decryptGrantDownload, decryptGrantMetadata, type OpenPgpGrant } from "@
 import { useKeyVault } from "@/hooks/use-key-vault";
 import type { FileMetadata, ShareAccessResponse } from "@/lib/crypto/types";
 import { decryptDownload, decryptMetadata } from "@/lib/crypto/worker-client";
-import { useCameraSecurity } from "@/hooks/use-camera-security";
-import { CameraPreview } from "@/components/share/camera-preview";
 
 type ManifestFile = { documentId: string; status: "READY" | "DELETED"; metadata: FileMetadata | null };
 type Decrypted = { fingerprintId?: Uint8Array; fingerprintSecret?: Uint8Array; documentId: string; metadata: FileMetadata; file: ArrayBuffer };
@@ -33,25 +31,6 @@ export function SecureShareClient({ shareId }: { shareId: string }) {
   const [grant, setGrant] = useState<OpenPgpGrant | null>(null);
   const [keyReady, setKeyReady] = useState(false);
   const [accessAttempt, setAccessAttempt] = useState(0);
-  const pendingFile = useRef<ManifestFile | null>(null);
-  const lockGeneration = useRef(0);
-  const openFileRef = useRef<(file: ManifestFile) => void>(() => {});
-  const camera = useCameraSecurity(
-    shareId,
-    () => {
-      lockGeneration.current++;
-      setDecrypted((current) => {
-        current?.fingerprintSecret?.fill(0);
-        return null;
-      });
-      pendingFile.current = null;
-    },
-    () => {
-      const selected = pendingFile.current;
-      pendingFile.current = null;
-      if (selected) openFileRef.current(selected);
-    },
-  );
 
   useEffect(() => {
     let cancelled = false;
@@ -85,18 +64,13 @@ export function SecureShareClient({ shareId }: { shareId: string }) {
     finally { setLoading(false); }
   };
 
-  const recordEvent = (eventType: string) => fetch(`/api/shares/${shareId}/events`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ eventType }) });
-
   const openFile = async (file: ManifestFile, activeGrant: OpenPgpGrant | null = grant) => {
     if (!file.metadata || (!activeGrant && vault.state.status !== "READY")) return;
-    if (access?.cameraRequired && !camera.isVerified()) return;
-    const generation = lockGeneration.current;
     setLoading(true); setError("");
     try {
       const response = await fetch(`/api/shares/${shareId}/documents/${file.documentId}/access`, { cache: "no-store" });
       const body = await response.json();
       if (!response.ok) throw new Error(body.error?.message ?? "This file is unavailable.");
-      if (access?.cameraRequired && (!camera.isVerified() || generation !== lockGeneration.current)) return;
       if (activeGrant) {
         const downloaded = await fetch(body.downloadUrl, { cache: "no-store" });
         if (!downloaded.ok) throw new Error("Encrypted download failed.");
@@ -113,7 +87,6 @@ export function SecureShareClient({ shareId }: { shareId: string }) {
         }
         if (body.fingerprint && !opened.fingerprintId) throw new Error("The private key did not contain this copy's fingerprint.");
         if (profile?.denseProfile && !opened.fingerprintSecret) throw new Error("This copy's dense fingerprint could not be unwrapped.");
-        if (access?.cameraRequired && (!camera.isVerified() || generation !== lockGeneration.current)) return;
         if (profile?.denseProfile && opened.fingerprintSecret) {
           setDecrypted({ documentId: file.documentId, fingerprintId: opened.fingerprintId, fingerprintSecret: opened.fingerprintSecret, metadata: file.metadata, file: opened.file });
         } else {
@@ -138,7 +111,6 @@ export function SecureShareClient({ shareId }: { shareId: string }) {
         if (profile.denseProfile && !fingerprintSecret) throw new Error("This copy's dense fingerprint could not be unwrapped.");
       }
       const result = await decryptDownload(vault.state.privateKey, file.metadata, body);
-      if (access?.cameraRequired && (!camera.isVerified() || generation !== lockGeneration.current)) return;
       setDecrypted({ documentId: file.documentId, fingerprintId, fingerprintSecret, ...result });
       void recordEvent("DECRYPT_SUCCEEDED");
     } catch (caught) {
@@ -147,18 +119,7 @@ export function SecureShareClient({ shareId }: { shareId: string }) {
     } finally { setLoading(false); }
   };
 
-  useEffect(() => {
-    openFileRef.current = (file) => { void openFile(file); };
-  });
-
-  const chooseFile = (file: ManifestFile) => {
-    if (access?.cameraRequired && !camera.isVerified()) {
-      pendingFile.current = file;
-      void camera.start();
-      return;
-    }
-    void openFile(file);
-  };
+  const recordEvent = (eventType: string) => fetch(`/api/shares/${shareId}/events`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ eventType }) });
 
   const acceptPrivateKey = async (result: { grant: OpenPgpGrant | null }) => {
     if (!access) return;
@@ -203,11 +164,7 @@ export function SecureShareClient({ shareId }: { shareId: string }) {
   return <main className="min-h-svh bg-background px-4 py-8 sm:px-6"><div className="mx-auto max-w-5xl">
     <div className="rounded-2xl border-[3px] border-black bg-primary text-primary-foreground p-5 shadow-lg"><p className="text-xs font-bold tracking-[0.2em] uppercase">Authorized local access</p><h1 className="mt-1 font-head text-3xl sm:text-4xl">Protected file group</h1><p className="mt-2 text-sm">File names and contents are decrypted only inside this browser.</p></div>
     {error && <p role="alert" className="mt-4 rounded-xl border-2 border-black bg-card p-4 text-destructive">{error}</p>}
-    {access?.cameraRequired && <section className="mt-5 flex flex-wrap items-center justify-between gap-4 rounded-2xl border-[3px] border-black bg-card p-4 shadow-md">
-      <div className="flex items-center gap-3"><span className="rounded-full border-2 border-black bg-primary p-3"><Camera className="size-5" /></span><div><h2 className="font-head text-lg">High-security camera view</h2><p className="text-sm text-muted-foreground">This link requires one face in your camera before viewing. Video stays on this device.</p><p role="status" className="text-sm font-bold capitalize">{camera.stream ? `Camera ${camera.status}${camera.provider ? ` · ${camera.provider}` : ""}` : "Camera is off"}</p>{camera.error && <p role="alert" className="text-sm text-destructive">{camera.error}</p>}</div></div>
-      <div className="flex items-center gap-3">{camera.stream && !decrypted && <CameraPreview stream={camera.stream} status={camera.status} />}{!camera.stream || camera.status === "locked" ? <button type="button" disabled={camera.starting} onClick={() => { camera.stop(); void camera.start(); }} className="rounded-full border-2 border-black bg-primary px-4 py-2 font-bold shadow-sm disabled:opacity-50">{camera.starting ? "Starting camera…" : camera.stream ? "Restart camera" : "Start camera"}</button> : null}</div>
-    </section>}
-    {loading ? <div className="mt-5 flex min-h-56 items-center justify-center rounded-2xl border-2 border-black bg-card"><LoaderCircle className="size-8 animate-spin" /></div> : !keyReady ? <OpenPgpUnlock shareId={shareId} fingerprint={access?.openpgp?.fingerprint} armoredMessage={access?.openpgp?.armoredMessage} onUnlocked={(result) => void acceptPrivateKey(result)} /> : decrypted && access ? <><button type="button" onClick={() => { decrypted.fingerprintSecret?.fill(0); setDecrypted(null); }} className="mt-5 rounded-full border-2 border-black bg-card px-4 py-2 font-bold">Back to files</button><SecureViewer key={decrypted.documentId} documentId={decrypted.documentId} fingerprintId={decrypted.fingerprintId} fingerprintSecret={decrypted.fingerprintSecret} shareId={shareId} permission={access.permission} metadata={decrypted.metadata} bytes={decrypted.file} cameraRequired={access.cameraRequired} cameraStatus={camera.status} cameraStream={camera.stream} /></> : files.length ? <section className="mt-5 rounded-2xl border-[3px] border-black bg-card p-4 shadow-md"><h2 className="font-head text-2xl">Files</h2><div className="mt-3 space-y-2">{files.map((file) => file.status === "DELETED" ? <div key={file.documentId} className="rounded-xl border-2 border-black bg-muted p-4 font-bold text-muted-foreground">A file was removed by the owner.</div> : <button key={file.documentId} type="button" onClick={() => chooseFile(file)} className="flex w-full items-center gap-3 rounded-xl border-2 border-black bg-background p-4 text-left shadow-sm"><FileText className="size-5" /><span className="min-w-0"><span className="block truncate font-head">{file.metadata?.name}</span><span className="text-xs text-muted-foreground">{file.metadata ? `${(file.metadata.size / 1024).toFixed(1)} KB` : "Protected file"}</span></span></button>)}</div></section> : <div className="mt-5 flex min-h-56 flex-col items-center justify-center gap-4 rounded-2xl border-2 border-black bg-card p-6 text-center shadow-md"><KeyRound className="size-10" /><h2 className="font-head text-2xl">Private key accepted</h2><p className="max-w-lg text-sm text-muted-foreground">The document opens from the OpenPGP private key. If it is still hidden, this share was not sealed to that key.</p>{vault.state.status === "READY" && <button type="button" onClick={() => void unlockManifest()} className="rounded-full border-2 border-black bg-primary text-primary-foreground px-6 py-3 font-head shadow-md">Decrypt file list locally</button>}</div>}
+    {loading ? <div className="mt-5 flex min-h-56 items-center justify-center rounded-2xl border-2 border-black bg-card"><LoaderCircle className="size-8 animate-spin" /></div> : !keyReady ? <OpenPgpUnlock shareId={shareId} fingerprint={access?.openpgp?.fingerprint} armoredMessage={access?.openpgp?.armoredMessage} onUnlocked={(result) => void acceptPrivateKey(result)} /> : decrypted && access ? <><button type="button" onClick={() => { decrypted.fingerprintSecret?.fill(0); setDecrypted(null); }} className="mt-5 rounded-full border-2 border-black bg-card px-4 py-2 font-bold">Back to files</button><SecureViewer key={decrypted.documentId} documentId={decrypted.documentId} fingerprintId={decrypted.fingerprintId} fingerprintSecret={decrypted.fingerprintSecret} shareId={shareId} permission={access.permission} metadata={decrypted.metadata} bytes={decrypted.file} /></> : files.length ? <section className="mt-5 rounded-2xl border-[3px] border-black bg-card p-4 shadow-md"><h2 className="font-head text-2xl">Files</h2><div className="mt-3 space-y-2">{files.map((file) => file.status === "DELETED" ? <div key={file.documentId} className="rounded-xl border-2 border-black bg-muted p-4 font-bold text-muted-foreground">A file was removed by the owner.</div> : <button key={file.documentId} type="button" onClick={() => void openFile(file)} className="flex w-full items-center gap-3 rounded-xl border-2 border-black bg-background p-4 text-left shadow-sm"><FileText className="size-5" /><span className="min-w-0"><span className="block truncate font-head">{file.metadata?.name}</span><span className="text-xs text-muted-foreground">{file.metadata ? `${(file.metadata.size / 1024).toFixed(1)} KB` : "Protected file"}</span></span></button>)}</div></section> : <div className="mt-5 flex min-h-56 flex-col items-center justify-center gap-4 rounded-2xl border-2 border-black bg-card p-6 text-center shadow-md"><KeyRound className="size-10" /><h2 className="font-head text-2xl">Private key accepted</h2><p className="max-w-lg text-sm text-muted-foreground">The document opens from the OpenPGP private key. If it is still hidden, this share was not sealed to that key.</p>{vault.state.status === "READY" && <button type="button" onClick={() => void unlockManifest()} className="rounded-full border-2 border-black bg-primary text-primary-foreground px-6 py-3 font-head shadow-md">Decrypt file list locally</button>}</div>}
   </div></main>;
 }
 

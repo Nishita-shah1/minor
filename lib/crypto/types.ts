@@ -42,7 +42,6 @@ export type ShareAccessResponse = {
   groupId: string;
   documents: EncryptedDocumentDescriptor[];
   permission: "VIEW_ONLY" | "VIEW_AND_DOWNLOAD";
-  cameraRequired: boolean;
   availableFrom: string | null;
   expiresAt: string | null;
   openpgp?: { armoredMessage: string; fingerprint: string } | null;
